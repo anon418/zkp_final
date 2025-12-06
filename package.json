@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "copy:zkp": "npx ts-node scripts/copy-zkp-files.ts",
+    "build": "npm run copy:zkp && next build",
     "build:full": "npm run build:zkp && npm run build:blockchain && next build",
     "build:zkp": "npx ts-node scripts/zkp/build-v1.2.ts",
     "build:blockchain": "npx hardhat compile",

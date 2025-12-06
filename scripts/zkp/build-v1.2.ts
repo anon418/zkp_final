@@ -183,6 +183,43 @@ console.log('ZKEY SHA256:', hashes.zkey)
 console.log('Circuit Hash (from zkey):', circuitHash)
 console.log('Verifier SHA256:', hashes.verifier)
 
+/**
+ * [7/7] Public 폴더로 파일 복사 (배포용)
+ * - build/v1.2의 WASM과 ZKEY를 public/zkp/v1.2로 복사
+ * - Next.js는 public 폴더의 파일을 정적 자산으로 제공
+ */
+console.log('[7/7] Copying files to public folder...')
+try {
+  const PUBLIC_DIR = 'public/zkp/v1.2'
+  if (!fs.existsSync(PUBLIC_DIR)) {
+    fs.mkdirSync(PUBLIC_DIR, { recursive: true })
+  }
+
+  // WASM 파일 복사
+  if (fs.existsSync(WASM)) {
+    fs.copyFileSync(WASM, path.join(PUBLIC_DIR, 'vote.wasm'))
+    console.log('✅ WASM copied to public/zkp/v1.2/vote.wasm')
+  }
+
+  // ZKEY 파일 복사
+  if (fs.existsSync(ZKEY_FINAL)) {
+    fs.copyFileSync(ZKEY_FINAL, path.join(PUBLIC_DIR, 'vote_final.zkey'))
+    console.log('✅ ZKEY copied to public/zkp/v1.2/vote_final.zkey')
+  }
+
+  // Verification key 복사 (선택사항)
+  if (fs.existsSync(VKEY)) {
+    fs.copyFileSync(VKEY, path.join(PUBLIC_DIR, 'verification_key.json'))
+    console.log('✅ Verification key copied to public/zkp/v1.2/verification_key.json')
+  }
+
+  console.log('✅ Files copied to public folder\n')
+} catch (err) {
+  console.error('❌ Copy to public folder failed:', err)
+  // 복사 실패해도 빌드는 계속 진행 (로컬에서는 이미 있을 수 있음)
+  console.warn('⚠️  Continuing without copying to public folder')
+}
+
 console.log('\n✅ v1.2 build complete!')
 console.log('\nNext steps:')
 console.log('  1. Test with: npm run test:v1.2')

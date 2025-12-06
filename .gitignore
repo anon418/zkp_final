@@ -41,6 +41,9 @@ build/**/*.wasm
 build/**/*.zkey
 !build/v1.2/vote_final.zkey
 !build/v1.2/vote_js/vote.wasm
+# Allow public ZKP files for deployment
+!public/zkp/**/*.zkey
+!public/zkp/**/*.wasm
 
 # Temp
 *.tmp

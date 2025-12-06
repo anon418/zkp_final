@@ -10,8 +10,7 @@
  */
 
 import { ethers } from 'ethers'
-import path from 'path'
-import fs from 'fs'
+import VotingV2ABI from './abis/VotingV2.json'
 
 // VotingV2 주소 (환경 변수 또는 기본값)
 // 서버 사이드: VOTING_V2_ADDRESS, VOTING_V2_CONTRACT_ADDRESS
@@ -31,38 +30,9 @@ export const VERIFIER_ADDRESS =
 export const CHAIN_ID = 11155111 // Sepolia
 export const SEPOLIA_CHAIN_ID = 11155111 // Sepolia (별칭)
 
-// VotingV2 ABI 로드
-function loadVotingV2ABI() {
-  try {
-    const artifactPath = path.join(
-      process.cwd(),
-      'artifacts/contracts/solidity/VotingV2.sol/VotingV2.json'
-    )
-
-    if (fs.existsSync(artifactPath)) {
-      const artifact = JSON.parse(fs.readFileSync(artifactPath, 'utf8'))
-      return artifact.abi
-    }
-  } catch (error) {
-    console.warn('[VotingV2] ABI 로드 실패, 인라인 ABI 사용')
-  }
-
-  // 인라인 ABI (컴파일 전 또는 ABI 파일 없을 때)
-  return [
-    'function createElection(uint256 pollId, bytes32 merkleRoot, uint256 startTime, uint256 endTime, string[] memory candidates) public',
-    'function vote(uint256 pollId, uint256 proposalId, uint[2] calldata pA, uint[2][2] calldata pB, uint[2] calldata pC, uint[4] calldata pubSignals) public',
-    'function getElection(uint256 pollId) public view returns (bytes32 merkleRoot, uint256 startTime, uint256 endTime, address creator, uint256 candidatesCount, uint256 totalVotes)',
-    'function getCandidates(uint256 pollId) public view returns (string[] memory)',
-    'function getVote(uint256 pollId, uint256 nullifier) public view returns (uint256 candidate, uint256 voteCommitment, uint256 timestamp, bool exists)',
-    'function hasVoted(uint256 pollId, uint256 nullifier) public view returns (bool)',
-    'function electionExists(uint256 pollId) public view returns (bool)',
-    'event PollCreated(uint256 indexed pollId, address indexed creator, uint256 startTime, uint256 endTime, uint256 candidatesCount)',
-    'event ProofVerified(uint256 indexed pollId, address indexed voter, uint256 nullifier)',
-    'event VoteCast(uint256 indexed pollId, uint256 indexed nullifier, uint256 candidate, uint256 voteCommitment, bool isUpdate)',
-  ]
-}
-
-export const VOTING_V2_ABI = loadVotingV2ABI()
+// VotingV2 ABI (정적 import로 로드 - 클라이언트/서버 모두에서 작동)
+// ABI 파일은 배열 형식으로 저장됨
+export const VOTING_V2_ABI = VotingV2ABI as ethers.InterfaceAbi
 
 /**
  * RPC Provider 가져오기

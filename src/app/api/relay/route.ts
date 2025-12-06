@@ -360,12 +360,14 @@ export async function POST(request: NextRequest) {
       )
     } else {
       // 첫 투표: 새 레코드 생성
+      // 주의: voterAddress는 저장하지 않음 (익명성 보호)
+      // candidate는 결과 집계를 위해 저장하되, 투표자 정보와 분리
       await Vote.create({
         pollId: validatedData.pollId,
-        candidate: String(validatedData.proposalId), // 후보 ID 저장
+        candidate: String(validatedData.proposalId), // 후보 ID 저장 (결과 집계용)
         nullifierHash,
         txHash,
-        voterAddress: validatedData.voterAddress || null,
+        // voterAddress는 저장하지 않음 - 익명성 보호
         status: 'confirmed',
         confirmedAt: new Date(),
         // Public Signals 저장 (영수증 표시용)

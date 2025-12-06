@@ -55,10 +55,18 @@ export default function PollDetailPage() {
   const { participantCount, voteResults, showResults, setShowResults } =
     usePollResults(pollId, pollData)
   const timeLeft = useCountdown(pollData?.endTime || null)
-  const { txHash, publicSignals, setTxHash, setPublicSignals } =
+  const { txHash, publicSignals, previousCandidate, setTxHash, setPublicSignals } =
     useMyVote(pollId)
 
-  const [selectedOption, setSelectedOption] = useState<string | null>(null)
+  // 이전 선택지가 있으면 초기값으로 설정
+  const [selectedOption, setSelectedOption] = useState<string | null>(previousCandidate || null)
+  
+  // previousCandidate가 변경되면 selectedOption 업데이트
+  useEffect(() => {
+    if (previousCandidate && !selectedOption) {
+      setSelectedOption(previousCandidate)
+    }
+  }, [previousCandidate, selectedOption])
   const [copySuccess, setCopySuccess] = useState(false)
 
   // 투표 상태

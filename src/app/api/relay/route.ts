@@ -335,6 +335,37 @@ export async function POST(request: NextRequest) {
       throw new Error('Transaction failed after retries')
     }
 
+    // 트랜잭션 이벤트에서 VoteCast 이벤트 파싱하여 isUpdate 값 가져오기
+    let isUpdateFromEvent: boolean | null = null
+    try {
+      const contract = new ethers.Contract(contractAddress, contractABI, provider)
+      const voteCastEvent = contract.interface.getEvent('VoteCast')
+      
+      // 이벤트가 존재하는지 확인
+      if (voteCastEvent) {
+        const eventTopic = voteCastEvent.topicHash
+
+        // 트랜잭션 receipt의 logs에서 VoteCast 이벤트 찾기
+        for (const log of txReceipt.logs) {
+          if (log.topics[0] === eventTopic) {
+            try {
+              const decoded = contract.interface.decodeEventLog('VoteCast', log.data, log.topics)
+              isUpdateFromEvent = decoded.isUpdate
+              debug(`[Relayer] VoteCast 이벤트에서 isUpdate 파싱: ${isUpdateFromEvent}`)
+              break
+            } catch (decodeError) {
+              // 이벤트 디코딩 실패 시 무시하고 계속
+              debug(`[Relayer] 이벤트 디코딩 실패 (다른 이벤트일 수 있음):`, decodeError)
+            }
+          }
+        }
+      } else {
+        warn(`[Relayer] VoteCast 이벤트를 찾을 수 없음 (ABI 확인 필요)`)
+      }
+    } catch (eventError) {
+      warn(`[Relayer] 이벤트 파싱 실패 (기존 로직 사용):`, eventError)
+    }
+
     // Public Signals 추출 (영수증 표시용)
     const merkleRoot = publicSignals[0] || '0x' + '0'.repeat(64)
     const pollIdFromProof = publicSignals[1] || '0'
@@ -379,12 +410,19 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // 재투표 여부 확인
+    // 1. 이벤트에서 파싱한 isUpdate 값 우선 사용
+    // 2. 없으면 existingVote 확인 (DB 기반)
+    const isReVote = isUpdateFromEvent !== null ? isUpdateFromEvent : !!existingVote
+
     return NextResponse.json({
       success: true,
       txHash,
       blockNumber: txReceipt.blockNumber,
       confirmations: 2,
       message: '투표가 성공적으로 제출되었습니다.',
+      isReVote, // 재투표 여부 반환 (컨트랙트 이벤트 기반)
+      isUpdate: isUpdateFromEvent, // 컨트랙트의 실제 isUpdate 값 (선택적)
     })
   } catch (catchError: unknown) {
     const err = catchError as { name?: string; message?: string }

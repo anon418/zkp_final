@@ -31,8 +31,9 @@ export const CHAIN_ID = 11155111 // Sepolia
 export const SEPOLIA_CHAIN_ID = 11155111 // Sepolia (별칭)
 
 // VotingV2 ABI (정적 import로 로드 - 클라이언트/서버 모두에서 작동)
-// ABI 파일은 배열 형식으로 저장됨
-export const VOTING_V2_ABI = VotingV2ABI as ethers.InterfaceAbi
+// ABI 파일은 { abi: [...] } 형식으로 저장됨
+const abiData = VotingV2ABI as { abi: unknown[] }
+export const VOTING_V2_ABI = abiData.abi as ethers.InterfaceAbi
 
 /**
  * RPC Provider 가져오기

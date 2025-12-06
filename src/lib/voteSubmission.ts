@@ -265,39 +265,15 @@ export async function submitVote({
       )
     }
 
-    // 재투표 여부 확인
-    let isReVoteDetected = false
-    if (
-      publicSignals &&
-      Array.isArray(publicSignals) &&
-      publicSignals.length >= 3
-    ) {
-      try {
-        const myVoteUrl = getApiUrl(
-          `/api/vote/${pollId}/my-vote?address=${encodeURIComponent(
-            address || ''
-          )}`
-        )
-        const myVoteRes = await fetch(myVoteUrl)
-        if (myVoteRes.ok) {
-          const myVoteData = await myVoteRes.json()
-          if (myVoteData.success && myVoteData.hasVoted) {
-            const nullifierFromProof = publicSignals[2]
-            if (myVoteData.vote?.nullifierHash === nullifierFromProof) {
-              isReVoteDetected = true
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('[Vote] 재투표 확인 실패:', err)
-      }
-    }
+    // 재투표 여부는 백엔드에서 반환한 값 사용
+    // 백엔드가 existingVote를 확인하여 정확한 재투표 여부를 판단
+    const isReVote = relayerRes.isReVote === true
 
     return {
       success: true,
       txHash: relayerRes.txHash,
       publicSignals,
-      isReVote: isReVoteDetected,
+      isReVote,
     }
   } catch (fetchError: unknown) {
     clearTimeout(timeoutId)

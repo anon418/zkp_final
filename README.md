@@ -1,7 +1,7 @@
 # VoteZK ⚡
 
-> **운영자도 조작할 수 없는 완전 투명 투표 플랫폼**  
-> Zero-Knowledge Proof로 익명성 보장 + 블록체인으로 영구 검증 가능
+> **운영자도 조작할 수 없는 투명한 투표 플랫폼**  
+> Zero-Knowledge Proof로 익명성 보장 + 블록체인으로 검증 가능
 
 <div align="center">
 
@@ -9,7 +9,7 @@
 
 **[🚀 Demo](https://votezk.vercel.app)** • **[📖 Documentation](docs/)** • **[🔍 Etherscan](https://sepolia.etherscan.io)** • **[📋 배포 가이드](DEPLOYMENT_CHECKLIST.md)**
 
-[![완성도](https://img.shields.io/badge/완성도-100%25-brightgreen?style=for-the-badge)](README.md)
+[![Status](https://img.shields.io/badge/Status-Production-ready-brightgreen?style=for-the-badge)](README.md)
 [![시연](https://img.shields.io/badge/시연-Ready-blue?style=for-the-badge)](docs/START_PROJECT.md)
 [![WSL](https://img.shields.io/badge/WSL-Optional-lightgrey?style=for-the-badge)](wsl/README.md)
 
@@ -17,15 +17,17 @@
 
 ---
 
-## 💡 **왜 VoteZK인가?**
+## 💡 **VoteZK란?**
 
-### **문제점: 기존 투표 시스템의 한계**
+VoteZK는 Zero-Knowledge Proof(영지식 증명)와 블록체인을 활용한 투명하고 익명적인 투표 플랫폼입니다.
 
-| 시스템           | 익명성          | 검증 가능성      | 조작 불가능성       |
-| ---------------- | --------------- | ---------------- | ------------------- |
-| **Google Forms** | ⚠️ IP 로그 남음 | ❌ 관리자만 확인 | ❌ 관리자 조작 가능 |
-| **일반 투표 앱** | ⚠️ 서버 로그    | ❌ 믿어야 함     | ❌ 서버 조작 가능   |
-| **VoteZK**       | ✅ 완전 익명    | ✅ 누구나 검증   | ✅ 수학적 보장      |
+### **기존 투표 시스템의 한계**
+
+| 시스템           | 익명성           | 검증 가능성      | 조작 불가능성       |
+| ---------------- | ---------------- | ---------------- | ------------------- |
+| **Google Forms** | ⚠️ IP 로그 남음  | ❌ 관리자만 확인 | ❌ 관리자 조작 가능 |
+| **일반 투표 앱** | ⚠️ 서버 로그     | ❌ 믿어야 함     | ❌ 서버 조작 가능   |
+| **VoteZK**       | ✅ ZKP 기반 익명 | ✅ 누구나 검증   | ✅ 블록체인 보장    |
 
 ### ⚠️ **중요한 제한사항**
 
@@ -41,25 +43,26 @@
 
 **자세한 내용**: [docs/SYSTEM.md](docs/SYSTEM.md), [docs/LIMITATIONS.md](docs/LIMITATIONS.md) 참고
 
-### **VoteZK의 차별화**
+### **VoteZK의 특징**
 
-#### 🔒 **1. 운영자를 믿지 않아도 됨**
+#### 🔒 **1. 투명성과 검증 가능성**
 
 - **일반 투표**: 관리자가 서버에서 결과를 조작할 수 있음
-- **VoteZK**: 블록체인에 기록되어 **수학적으로 조작 불가능**
-- **검증 방법**: [Etherscan](https://sepolia.etherscan.io)에서 직접 확인
+- **VoteZK**: 블록체인에 기록되어 **조작이 어려움**
+- **검증 방법**: [Etherscan](https://sepolia.etherscan.io)에서 누구나 직접 확인 가능
 
-#### 🎭 **2. 완전한 익명성**
+#### 🎭 **2. 익명성 보장**
 
 - **일반 투표**: IP 주소, 접속 시간 등이 서버 로그에 남음
-- **VoteZK**: Zero-Knowledge Proof로 **서버도 누굴 찍었는지 모름**
+- **VoteZK**: Zero-Knowledge Proof로 **서버도 누가 투표했는지 알 수 없음**
 - **기술**: Circom + Groth16 증명 시스템
+- **주의**: 같은 지갑 주소로는 중복 투표 불가, 다른 지갑 주소로는 가능 (Open Poll 방식)
 
-#### ⛓️ **3. 영구 검증 가능**
+#### ⛓️ **3. 검증 가능한 투표 기록**
 
 - **일반 투표**: 발표된 결과를 믿어야 함
-- **VoteZK**: Sepolia 블록체인에 **영구 기록**
-- **투명성**: 누구나 언제든지 재검증 가능
+- **VoteZK**: Sepolia 블록체인에 **기록되어 검증 가능**
+- **투명성**: 누구나 언제든지 Etherscan에서 재검증 가능
 
 ---
 
@@ -93,105 +96,125 @@
 
 ## 🔧 **어떻게 작동하는가?**
 
+VoteZK는 Zero-Knowledge Proof(영지식 증명)를 사용하여 투표 내용을 숨기면서도 유효성을 증명할 수 있습니다. 간단히 말하면, "나는 유효한 투표를 했지만, 무엇을 선택했는지는 비밀"이라는 것을 수학적으로 증명하는 것입니다.
+
 ### **ZKP 기반 익명 투표 프로세스**
 
 #### **1단계: 투표자 등록**
+
 ```
-사용자 → MetaMask 연결 → Identity 생성
+사용자 → MetaMask 지갑 연결 → Identity 생성
   ↓
-- Nullifier Secret (비밀값) 생성
-- Identity Trapdoor 생성
-- MongoDB에 등록 (익명 정보만 저장)
+- Nullifier Secret (비밀값) 생성: 중복 투표 방지용
+- Identity Trapdoor 생성: 익명성 보장용
+- MongoDB에 등록 (익명 정보만 저장, 지갑 주소는 저장하지 않음)
 ```
 
 #### **2단계: ZKP 증명 생성**
+
 ```
-후보 선택 → ZKP 증명 생성 (Web Worker)
+후보 선택 → ZKP 증명 생성 (브라우저 Web Worker에서 실행)
   ↓
-입력:
+입력 (Private - 비밀):
 - vote: 선택한 후보 ID (0-7)
 - nullifierSecret: 사용자 고유 비밀값
-- merkleProof: Merkle Tree 증명 (화이트리스트 검증)
+- merkleProof: Merkle Tree 증명 (화이트리스트 검증용, Open Poll에서는 사용 안 함)
 - pollId: 투표 ID
 
 처리:
-- Circom 회로 실행 (1300개 제약조건)
-- Groth16 증명 생성 (~15초)
+- Circom 회로 실행 (약 1300개 제약조건 계산)
+- Groth16 증명 생성 (약 15초 소요)
 - Public Signals 생성: [root, pollId, nullifier, voteCommitment]
 
 출력:
-- Proof: ZKP 증명 (a, b, c)
-- Public Signals: 검증 가능한 공개 정보
+- Proof: ZKP 증명 (a, b, c) - 수학적 증명
+- Public Signals: 검증 가능한 공개 정보 (비밀 정보는 포함되지 않음)
 ```
 
 #### **3단계: 블록체인 검증 및 저장**
+
 ```
-Relayer → 블록체인 제출
+Relayer (가스비 대납 서버) → Sepolia 블록체인에 제출
   ↓
 1. Groth16Verifier.verifyProof() 호출
-   - ZKP 증명 수학적 검증
-   - Public Signals 검증
+   - ZKP 증명 수학적 검증 (증명이 유효한지 확인)
+   - Public Signals 검증 (pollId, nullifier 등 확인)
 
 2. VotingV2.vote() 호출
-   - Nullifier 중복 체크
-   - 투표 기록 저장 (영구 보관)
+   - Nullifier 중복 체크 (같은 nullifier로 재투표 방지)
+   - 투표 기록 저장 (블록체인에 영구 보관)
    - 이벤트 발생 (Etherscan에서 확인 가능)
 ```
 
 #### **4단계: 익명성 보장**
+
 ```
-✅ 서버는 누가 투표했는지 모름
+✅ 서버는 누가 투표했는지 알 수 없음
    - Nullifier만 기록 (신원 정보 없음)
    - IP 주소, 접속 시간 등 로그 없음
+   - voterAddress는 저장하지 않음
 
 ✅ 블록체인에서도 신원 노출 없음
    - Nullifier는 해시값 (역추적 불가능)
    - Vote Commitment는 암호화된 투표 정보
+   - Etherscan에서 candidate 값은 보이지만, 누가 선택했는지는 연결 불가능
 
 ✅ 누구나 검증 가능하지만 신원은 보호
    - Etherscan에서 투표 기록 확인 가능
-   - 하지만 누가 투표했는지는 알 수 없음
+   - 하지만 누가 투표했는지는 알 수 없음 (ZKP로 분리됨)
 ```
 
 ### **핵심 보안 메커니즘**
 
-| 메커니즘 | 목적 | 구현 |
-|---------|------|------|
-| **Nullifier** | 중복 투표 방지 | 같은 nullifierSecret으로는 두 번 투표 불가 |
-| **Merkle Tree** | 화이트리스트 검증 | 승인된 사용자만 투표 가능 (Closed Poll) |
-| **ZKP (Groth16)** | 익명성 보장 | 투표 내용을 숨기면서 유효성 증명 |
-| **블록체인** | 영구 기록 | Sepolia에 영구 저장, 조작 불가능 |
+| 메커니즘          | 목적              | 구현                                       | 설명                                                 |
+| ----------------- | ----------------- | ------------------------------------------ | ---------------------------------------------------- |
+| **Nullifier**     | 중복 투표 방지    | 같은 nullifierSecret으로는 두 번 투표 불가 | 사용자별 고유 해시값으로 중복 투표 차단              |
+| **Merkle Tree**   | 화이트리스트 검증 | 승인된 사용자만 투표 가능 (Closed Poll)    | 현재는 Open Poll 방식으로 미사용                     |
+| **ZKP (Groth16)** | 익명성 보장       | 투표 내용을 숨기면서 유효성 증명           | "유효한 투표를 했지만 무엇을 선택했는지는 비밀" 증명 |
+| **블록체인**      | 검증 가능한 기록  | Sepolia에 저장, 누구나 확인 가능           | Etherscan에서 투표 기록 검증 가능                    |
 
 ---
 
 ## 🚀 **빠른 시작**
 
+### **필수 요구사항**
+
+- Node.js 18 이상
+- npm 9 이상
+- MongoDB (로컬 또는 MongoDB Atlas)
+- MetaMask 브라우저 확장 프로그램
+- Sepolia 테스트넷 ETH (테스트용)
+
 ### **Windows (권장)**
 
 ```cmd
-# 1. 설치
+# 1. 의존성 설치
 npm install --legacy-peer-deps
 
 # 2. 환경 변수 설정
 copy env.example.txt .env
-# .env 파일 편집 (MongoDB, Sepolia RPC 등)
+# .env 파일을 열어서 다음 값들을 설정:
+# - MONGODB_URI: MongoDB 연결 문자열
+# - SEPOLIA_RPC_URL: Sepolia RPC 엔드포인트
+# - RELAYER_PRIVATE_KEY: Relayer 지갑 개인키
+# - VOTING_V2_CONTRACT_ADDRESS: VotingV2 컨트랙트 주소
 
-# 3. 실행
+# 3. 개발 서버 실행
 npm run dev
 ```
 
-### **WSL (Proof 서버용 - 선택 사항, 현재 미사용)**
+### **WSL (선택 사항, 현재 미사용)**
 
-> **참고**: 현재는 브라우저 Web Worker만 사용합니다. WSL은 시연 시 속도 향상을 위한 선택 사항입니다.
+> **참고**: 현재는 브라우저 Web Worker만 사용합니다. WSL Proof 서버는 시연 시 속도 향상을 위한 선택 사항이며, 일반 사용 시에는 불필요합니다.
 
 ```bash
 # wsl/README.md 참고 (선택 사항)
 # 현재는 브라우저 Web Worker만 사용하므로 WSL 설정 불필요
-# cd /mnt/e/zkp_final
-# ./wsl/proof-server.sh
 ```
 
 → 브라우저에서 `http://localhost:3000` 접속
+
+**자세한 설정 가이드**: [docs/START_PROJECT.md](docs/START_PROJECT.md) 참고
 
 ---
 
@@ -210,8 +233,8 @@ npm run dev
 - ✅ MetaMask 지갑으로 인증
 - ✅ ZKP 증명 자동 생성
 - ✅ 가스비 대납 (Relayer)
-- ✅ 익명성 100% 보장
-- ✅ 1인 1표 강제
+- ✅ 익명성 보장 (ZKP 기반)
+- ✅ 1인 1표 강제 (Nullifier 기반)
 
 ### **시스템 관리자**
 
@@ -317,7 +340,7 @@ GET  /api/stats              # 전체 통계
 
 - `/polls/[pollId]` = 결과 조회 전용
 - 실제 투표는 QR 코드를 통해 별도 링크로 이동
-- **진짜 ZKP 증명 사용! (15초 소요)**
+- **실제 ZKP 증명 사용** (약 15초 소요, 브라우저에서 실행)
 
 ---
 
@@ -366,22 +389,12 @@ npm run test:blockchain
 npm run test:backend
 ```
 
-### **E2E 테스트 (Puppeteer)**
-
-```bash
-# 서버 실행 후 (별도 터미널)
-npm run dev
-
-# E2E 테스트 실행
-npm run test:e2e
-```
-
-**참고**: E2E 테스트는 Puppeteer를 사용하여 브라우저 자동화 테스트를 수행합니다. (`src/__tests__/e2e/vote-flow.e2e.test.ts`)
-
 ### **Etherscan 검증**
 
-- Verifier: [0x...](https://sepolia.etherscan.io)
-- Voting: [0x...](https://sepolia.etherscan.io)
+- **VotingV2**: [0xE4B4219eb5a12825859104601Fd8d94fFEF1e3d9](https://sepolia.etherscan.io/address/0xE4B4219eb5a12825859104601Fd8d94fFEF1e3d9)
+- **Verifier**: [0x6A49b069Eaf2A53ab31723d93bd758310bFeb345](https://sepolia.etherscan.io/address/0x6A49b069Eaf2A53ab31723d93bd758310bFeb345)
+
+자세한 정보는 [docs/blockchain.md](docs/blockchain.md) 참고
 
 ---
 
@@ -389,22 +402,22 @@ npm run test:e2e
 
 ### 📌 필수 문서
 
-| 문서                                                       | 설명                |
-| ---------------------------------------------------------- | ------------------- |
-| [docs/START_PROJECT.md](docs/START_PROJECT.md)             | ⭐ 빠른 시작 가이드 (로컬 개발) |
-| [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)       | ⭐ 배포 가이드 (Vercel + 시연) |
-| [docs/SYSTEM.md](docs/SYSTEM.md)                            | ⭐ 시스템 정보 (제한사항, 정책) |
+| 문서                                                 | 설명                            |
+| ---------------------------------------------------- | ------------------------------- |
+| [docs/START_PROJECT.md](docs/START_PROJECT.md)       | ⭐ 빠른 시작 가이드 (로컬 개발) |
+| [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) | ⭐ 배포 가이드 (Vercel + 시연)  |
+| [docs/SYSTEM.md](docs/SYSTEM.md)                     | ⭐ 시스템 정보 (제한사항, 정책) |
 
 ### 📚 참고 문서
 
-| 문서                                                           | 설명                  |
-| -------------------------------------------------------------- | --------------------- |
-| [docs/USER_GUIDE.md](docs/USER_GUIDE.md)                      | 사용자 가이드         |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                  | 시스템 아키텍처       |
-| [docs/blockchain.md](docs/blockchain.md)                      | 블록체인 정보 (주소, 이벤트) |
-| [docs/zkp/zkp-spec-v1.2.md](docs/zkp/zkp-spec-v1.2.md)         | ZKP 기술 명세         |
-| [wsl/README.md](wsl/README.md)                                 | WSL 설정 가이드       |
-| [scripts/README_CHECK_ENV.md](scripts/README_CHECK_ENV.md)     | 환경 변수 검증 가이드 |
+| 문서                                                       | 설명                         |
+| ---------------------------------------------------------- | ---------------------------- |
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md)                   | 사용자 가이드                |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)               | 시스템 아키텍처              |
+| [docs/blockchain.md](docs/blockchain.md)                   | 블록체인 정보 (주소, 이벤트) |
+| [docs/zkp/zkp-spec-v1.2.md](docs/zkp/zkp-spec-v1.2.md)     | ZKP 기술 명세                |
+| [wsl/README.md](wsl/README.md)                             | WSL 설정 가이드              |
+| [scripts/README_CHECK_ENV.md](scripts/README_CHECK_ENV.md) | 환경 변수 검증 가이드        |
 
 ---
 
@@ -505,7 +518,7 @@ MIT License
 
 | 기능          | 기존 투표    | VoteZK                      |
 | ------------- | ------------ | --------------------------- |
-| **익명성**    | ⚠️ IP 로그   | ✅ ZKP 완전 익명            |
+| **익명성**    | ⚠️ IP 로그   | ✅ ZKP 기반 익명            |
 | **검증**      | ❌ 관리자만  | ✅ 누구나 Etherscan         |
 | **조작 방지** | ❌ 서버 의존 | ✅ 블록체인 보장            |
 | **투명성**    | ❌ 블랙박스  | ✅ 오픈소스 + 온체인        |

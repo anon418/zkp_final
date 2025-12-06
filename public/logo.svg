@@ -1,0 +1,21 @@
+<svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- VoteZK Logo: Star (ZK Proof) + Shield (Security) -->
+  <defs>
+    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Shield Background -->
+  <path d="M16 2L6 7V13C6 19.6 10.4 25.8 16 28C21.6 25.8 26 19.6 26 13V7L16 2Z" 
+        fill="url(#logoGradient)"/>
+  
+  <!-- Inner Star (ZK Symbol) -->
+  <path d="M16 8L18 13L23 16L18 19L16 24L14 19L9 16L14 13L16 8Z" 
+        fill="white" opacity="0.95"/>
+  
+  <!-- Security Lines -->
+  <path d="M12 16H20" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+</svg>
+

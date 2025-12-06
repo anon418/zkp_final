@@ -1,0 +1,59 @@
+{
+  "version": "v1.2-stable",
+  "commit": "c327480c93c5f4f62f20a1ba3004a40c8ec05f6c",
+  "generatedAt": "2025-11-29T06:54:07.183Z",
+  "toolchain": {
+    "circom": "2.1.4",
+    "snarkjs": "0.7.5",
+    "node": "v22.20.0"
+  },
+  "ptau": {
+    "file": "pot14_final.ptau",
+    "sha256": "489BE9E5AC65D524F7B1685BAAC8A183C6E77924FDB73D2B8105E335F277895D"
+  },
+  "circuit": {
+    "file": "circuits/v1.2/vote.circom",
+    "sha256": "903FEB5FAD05B01A51D477BD1843A3D5184407A3E451A3F9B657E2A575089799",
+    "depth": 14,
+    "r1cs": {
+      "file": "build/v1.2/vote.r1cs",
+      "sha256": "40FE8962081EBE8DD8A0A35B170D70FEAE45AA26AA46B2557AD514890B37B4B3"
+    },
+    "wasm": {
+      "file": "build/v1.2/vote_js/vote.wasm",
+      "sha256": "BCCCBCECE956A68EABFADA3F15FB54CC102F8F4F45ACBBBD7509989E3B55E6DE"
+    }
+  },
+  "zkey": {
+    "file": "build/v1.2/vote_final.zkey",
+    "sha256": "D75CE5465739F95AF419B3BF758D2FD19A588D6F447A236CA390CF8EA18FD4DE",
+    "circuitHash": "unknown",
+    "contributions": [
+      {
+        "name": "zkpa",
+        "entropy": "codex",
+        "contributionHash": "unknown"
+      }
+    ]
+  },
+  "publicSignals": {
+    "note": "Public signals order: [root, pollId, nullifier, voteCommitment]",
+    "example": {
+      "root": "0x...",
+      "pollId": "111555111",
+      "nullifier": "0x...",
+      "voteCommitment": "0x..."
+    }
+  },
+  "verifier": {
+    "file": "contracts/VerifierV1_2.sol",
+    "sha256": "5E5A646B1C12ABA5027E744E7225A619471C43E0316085227CDD056306C12ACD",
+    "bundle": "zkp_bundle/verifier-v1.2.json"
+  },
+  "notes": [
+    "Proof success: `npx snarkjs groth16 verify build/v1.2/verification_key.json public.json proof.json` → OK",
+    "Proof tamper check: See scripts/test-tampered-proof.ts",
+    "calldata: generated via `npm run c:calldata:v1.2` → `calldata-v1.2.txt`",
+    "v1.2 changes: pollId is public input, public outputs: [root, pollId, nullifier, voteCommitment]"
+  ]
+}

@@ -347,15 +347,48 @@ export async function POST(request: NextRequest) {
 
         // 트랜잭션 receipt의 logs에서 VoteCast 이벤트 찾기
         for (const log of txReceipt.logs) {
-          if (log.topics[0] === eventTopic) {
+          // 컨트랙트 주소와 이벤트 토픽 확인
+          if (
+            log.address.toLowerCase() === contractAddress.toLowerCase() &&
+            log.topics[0] === eventTopic
+          ) {
             try {
-              const decoded = contract.interface.decodeEventLog('VoteCast', log.data, log.topics)
-              isUpdateFromEvent = decoded.isUpdate
-              debug(`[Relayer] VoteCast 이벤트에서 isUpdate 파싱: ${isUpdateFromEvent}`)
-              break
-            } catch (decodeError) {
-              // 이벤트 디코딩 실패 시 무시하고 계속
-              debug(`[Relayer] 이벤트 디코딩 실패 (다른 이벤트일 수 있음):`, decodeError)
+              // parseLog를 사용하여 더 안전하게 파싱
+              const parsed = contract.interface.parseLog({
+                topics: log.topics as string[],
+                data: log.data,
+              })
+              
+              if (parsed && parsed.name === 'VoteCast') {
+                isUpdateFromEvent = parsed.args.isUpdate as boolean
+                debug(
+                  `[Relayer] VoteCast 이벤트에서 isUpdate 파싱 성공: ${isUpdateFromEvent}`
+                )
+                debug(
+                  `[Relayer] VoteCast 이벤트 상세: pollId=${parsed.args.pollId}, nullifier=${parsed.args.nullifier?.toString().substring(0, 10)}..., candidate=${parsed.args.candidate}, isUpdate=${parsed.args.isUpdate}`
+                )
+                break
+              }
+            } catch (parseError) {
+              // parseLog 실패 시 decodeEventLog 시도
+              try {
+                const decoded = contract.interface.decodeEventLog(
+                  'VoteCast',
+                  log.data,
+                  log.topics
+                )
+                isUpdateFromEvent = decoded.isUpdate as boolean
+                debug(
+                  `[Relayer] decodeEventLog로 isUpdate 파싱 성공: ${isUpdateFromEvent}`
+                )
+                break
+              } catch (decodeError) {
+                // 두 방법 모두 실패 시 다음 로그 시도
+                debug(
+                  `[Relayer] 이벤트 파싱 실패 (다른 이벤트일 수 있음):`,
+                  decodeError
+                )
+              }
             }
           }
         }

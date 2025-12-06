@@ -576,7 +576,9 @@ export default function PollDetailPage() {
           {voting
             ? statusMessage || '처리 중...'
             : selectedOption
-            ? '✅ 투표하기 (ZKP 생성)'
+            ? txHash
+              ? '🔄 재투표하기 (ZKP 생성)'
+              : '✅ 투표하기 (ZKP 생성)'
             : '🔒 지갑 연결 후 투표하기'}
         </button>
 

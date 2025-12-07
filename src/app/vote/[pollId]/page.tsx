@@ -53,7 +53,7 @@ export default function PollDetailPage() {
 
   // 커스텀 훅 사용
   const { pollData, loading } = usePollData(pollId)
-  const { participantCount, voteResults, showResults, setShowResults } =
+  const { participantCount, voteResults, showResults, setShowResults, refreshResults } =
     usePollResults(pollId, pollData)
   const timeLeft = useCountdown(pollData?.endTime || null)
   const { txHash, publicSignals, previousCandidate, isReVote: isReVoteFromHook, setTxHash, setPublicSignals, setIsReVote: setIsReVoteFromHook } =
@@ -84,12 +84,21 @@ export default function PollDetailPage() {
   
   // 영수증 표시/숨김 상태
   // 초기값: txHash가 있으면 영수증 표시 (새로고침 후에도 유지)
+  // 사용자가 수동으로 숨긴 경우를 추적
+  const [userHiddenReceipt, setUserHiddenReceipt] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const hidden = localStorage.getItem(`vote_${pollId}_receipt_hidden`)
+    return hidden === 'true'
+  })
+  
   const [showReceipt, setShowReceipt] = useState(() => {
     // 클라이언트 사이드에서만 실행
     if (typeof window === 'undefined') return false
     // 로컬 스토리지에서 txHash 확인
     const storedTxHash = localStorage.getItem(`vote_${pollId}_txHash`)
-    return !!storedTxHash
+    const hidden = localStorage.getItem(`vote_${pollId}_receipt_hidden`)
+    // txHash가 있고 사용자가 숨기지 않은 경우에만 표시
+    return !!storedTxHash && hidden !== 'true'
   })
   
   // useMyVote에서 가져온 재투표 여부가 변경되면 동기화
@@ -100,13 +109,13 @@ export default function PollDetailPage() {
     }
   }, [isReVoteFromHook])
   
-  // txHash가 로드되면 영수증 자동 표시 (새로고침 후에도 유지)
+  // txHash가 로드되면 영수증 자동 표시 (새로고침 후에도 유지, 단 사용자가 숨기지 않은 경우만)
   useEffect(() => {
-    if (txHash && !showReceipt) {
+    if (txHash && !showReceipt && !userHiddenReceipt) {
       console.log(`[PollDetail] txHash 로드됨 - 영수증 자동 표시 (isReVote: ${isReVote})`)
       setShowReceipt(true)
     }
-  }, [txHash, showReceipt, isReVote])
+  }, [txHash]) // txHash만 dependency로 사용하여 무한 루프 방지 (showReceipt, userHiddenReceipt, isReVote는 제거)
 
   // 🔗 링크 복사
   const handleCopyLink = () => {
@@ -202,7 +211,10 @@ export default function PollDetailPage() {
       }
 
       // 성공 처리
-      setIsReVote(result.isReVote || false)
+      const isReVoteValue = result.isReVote || false
+      setIsReVote(isReVoteValue)
+      // useMyVote 훅의 상태도 동기화
+      setIsReVoteFromHook(isReVoteValue)
       setTxHash(result.txHash || null)
 
       if (result.publicSignals && Array.isArray(result.publicSignals)) {
@@ -233,6 +245,11 @@ export default function PollDetailPage() {
         )
       }
 
+      // 투표 완료 후 결과 즉시 갱신 (약간의 지연 후 - DB 반영 시간 고려)
+      setTimeout(() => {
+        refreshResults()
+      }, 2000) // 2초 후 갱신
+
       // 로컬 스토리지 저장
       if (
         result.publicSignals &&
@@ -250,6 +267,12 @@ export default function PollDetailPage() {
           )
           // 재투표 여부 저장 (새로고침 후에도 유지)
           localStorage.setItem(`vote_${pollId}_isReVote`, String(result.isReVote === true))
+          
+          // 투표 완료 시 영수증 자동 표시 (사용자가 숨기지 않은 경우)
+          const receiptHidden = localStorage.getItem(`vote_${pollId}_receipt_hidden`)
+          if (!receiptHidden || receiptHidden !== 'true') {
+            setShowReceipt(true)
+          }
 
           // 재투표 시 영수증 갱신 (새로운 txHash로 업데이트)
           if (result.isReVote && address) {
@@ -308,7 +331,10 @@ export default function PollDetailPage() {
     } catch (err: unknown) {
       const error = err as { message?: string; name?: string }
       const { error: logError } = await import('@/lib/logger')
-      logError('[Vote] Error:', error)
+      
+      // 에러 메시지 추출
+      const errorMessage = error?.message || String(error) || '알 수 없는 오류'
+      logError('[Vote] Error:', errorMessage)
 
       let userMessage = '알 수 없는 오류가 발생했습니다.'
 
@@ -660,16 +686,29 @@ export default function PollDetailPage() {
               borderRadius: '12px',
             }}
           >
-            {/* 디버깅: 재투표 여부 확인 */}
-            {process.env.NODE_ENV === 'development' && (
-              <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}>
-                [DEBUG] isReVote: {String(isReVote)}, isReVoteFromHook: {String(isReVoteFromHook)}, txHash: {txHash?.substring(0, 10)}...
-              </div>
-            )}
             {/* 영수증 토글 버튼 (왼쪽 상단) */}
             <div style={{ marginBottom: '16px', textAlign: 'left' }}>
               <button
-                onClick={() => setShowReceipt(!showReceipt)}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  const newShowReceipt = !showReceipt
+                  setShowReceipt(newShowReceipt)
+                  
+                  // 사용자가 숨긴 경우 로컬 스토리지에 저장
+                  if (!newShowReceipt) {
+                    setUserHiddenReceipt(true)
+                    if (typeof window !== 'undefined') {
+                      localStorage.setItem(`vote_${pollId}_receipt_hidden`, 'true')
+                    }
+                  } else {
+                    setUserHiddenReceipt(false)
+                    if (typeof window !== 'undefined') {
+                      localStorage.removeItem(`vote_${pollId}_receipt_hidden`)
+                    }
+                  }
+                }}
                 style={{
                   padding: '8px 16px',
                   background: 'rgba(255, 255, 255, 0.1)',

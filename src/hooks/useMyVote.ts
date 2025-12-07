@@ -35,9 +35,8 @@ export function useMyVote(pollId: string) {
           setPreviousCandidate(storedCandidate)
           setTxHash(storedTxHash)
           // 재투표 여부 복원 (로컬 스토리지에서)
-          if (storedIsReVote === 'true') {
-            setIsReVote(true)
-          }
+          const isReVoteValue = storedIsReVote === 'true'
+          setIsReVote(isReVoteValue)
           // Public Signals 재구성 (로컬 스토리지에서)
           setPublicSignals([
             '0x' + '0'.repeat(64), // Merkle Root (로컬에는 없음)

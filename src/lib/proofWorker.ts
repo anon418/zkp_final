@@ -86,8 +86,17 @@ export function generateProofInWorker(
 
     proofWorker.onerror = (error) => {
       clearTimeout(timeout)
-      console.error('[Vote] Worker error:', error)
-      reject(new Error('Worker 오류가 발생했습니다.'))
+      // Worker 오류 객체는 일반적으로 빈 객체이므로, errorEvent의 속성을 확인
+      const errorMessage = error?.message || error?.type || 'Unknown worker error'
+      const errorDetails = {
+        message: errorMessage,
+        filename: error?.filename,
+        lineno: error?.lineno,
+        colno: error?.colno,
+        error: error?.error,
+      }
+      console.error('[Vote] Worker error:', errorDetails)
+      reject(new Error(`Worker 오류가 발생했습니다: ${errorMessage}`))
     }
 
     proofWorker.postMessage(message)

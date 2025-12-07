@@ -22,6 +22,7 @@ export function usePollResults(pollId: string, pollData: { endTime: string } | n
   const [participantCount, setParticipantCount] = useState<number>(0)
   const [voteResults, setVoteResults] = useState<VoteResult[] | null>(null)
   const [showResults, setShowResults] = useState(false)
+  const [fetchResultsFn, setFetchResultsFn] = useState<(() => Promise<void>) | null>(null)
 
   useEffect(() => {
     if (!pollId || !pollData) return
@@ -108,10 +109,19 @@ export function usePollResults(pollId: string, pollData: { endTime: string } | n
           setVoteResults(resultsData.results)
         }
       } catch (err) {
-        const { error: logError } = await import('@/lib/logger')
-        logError('[PollDetail] Results fetch failed:', err)
+        // 네트워크 오류는 조용히 처리 (재시도 메커니즘에 의존)
+        // 개발 환경에서만 상세 로그 출력
+        if (process.env.NODE_ENV === 'development') {
+          const { error: logError } = await import('@/lib/logger')
+          const errorMessage = err instanceof Error ? err.message : String(err)
+          logError('[PollDetail] Results fetch failed:', errorMessage)
+        }
+        // 프로덕션에서는 조용히 실패 (다음 폴링에서 재시도)
       }
     }
+
+    // fetchResults 함수를 외부에서 호출할 수 있도록 저장
+    setFetchResultsFn(() => fetchResults)
 
     fetchResults() // 즉시 한 번 실행
 
@@ -137,6 +147,13 @@ export function usePollResults(pollId: string, pollData: { endTime: string } | n
     }
   }, [pollId, pollData])
 
-  return { participantCount, voteResults, showResults, setShowResults }
+  // 수동으로 결과를 갱신하는 함수
+  const refreshResults = async () => {
+    if (fetchResultsFn) {
+      await fetchResultsFn()
+    }
+  }
+
+  return { participantCount, voteResults, showResults, setShowResults, refreshResults }
 }
 

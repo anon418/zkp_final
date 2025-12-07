@@ -132,12 +132,20 @@ export default function PollFormFields({
             color: '#64748b',
           }}
         >
-          💡 각 후보를 한 줄씩 입력하세요. 최소 2개 이상의 후보가 필요합니다.
+          💡 각 후보를 한 줄씩 입력하세요. 최소 2개, 최대 8개까지 입력 가능합니다.
+          <div style={{ marginTop: '4px', fontSize: '0.75rem', color: '#94a3b8' }}>
+            (ZKP 회로 제약으로 최대 8개까지 지원)
+          </div>
           {optionsText && (
             <span
-              style={{ marginLeft: '8px', color: '#16a34a', fontWeight: 600 }}
+              style={{
+                marginLeft: '8px',
+                color: candidateCount > 8 ? '#dc2626' : candidateCount >= 2 ? '#16a34a' : '#f59e0b',
+                fontWeight: 600,
+              }}
             >
               현재 {candidateCount}개 후보
+              {candidateCount > 8 && ' (최대 8개 초과)'}
             </span>
           )}
         </div>

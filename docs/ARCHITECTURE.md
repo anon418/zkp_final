@@ -215,3 +215,76 @@ graph TB
 - Relayer 풀 (로드 밸런싱)
 - 서버 사이드 ZKP 생성 (WSL Proof 서버)
 
+---
+
+## 🔑 핵심 개념 상세
+
+### PollId 변환 원리
+
+**UUID → 숫자 변환**:
+
+투표 생성 시 UUID가 생성됩니다:
+```
+예: 9948753b-0a79-4451-ab3e-aed47583d953
+```
+
+이 UUID를 온체인에서 사용하기 위해 **숫자로 변환**합니다:
+
+```javascript
+// src/app/api/relay/route.ts
+const pollIdNumeric = parseInt(validatedData.pollId.substring(0, 8), 16)
+```
+
+**변환 과정**:
+1. UUID의 **첫 8자리** 추출: `9948753b`
+2. 16진수로 파싱: `parseInt("9948753b", 16)`
+3. 결과: `2571662651` (10진수)
+
+**왜 작은 숫자로 보일까?**:
+- UUID의 첫 8자리가 작은 16진수 값이면 작은 숫자가 됩니다
+- `00000001` → `1`
+- `00000002` → `2`
+- `9948753b` → `2571662651`
+
+### Nullifier 생성 원리
+
+**Nullifier 계산식**:
+```javascript
+nullifier = Poseidon(nullifierSecret, pollId)
+```
+
+**ZKP 회로에서** (`contracts/zkp/v1.2/vote.circom`):
+```circom
+// nullifier = Poseidon(nullifierSecret, pollId)
+component nh = Poseidon(2);
+nh.inputs[0] <== nullifierSecret;
+nh.inputs[1] <== pollId;
+nullifier <== nh.out;
+```
+
+**Nullifier의 특징**:
+1. **선거별로 다름**: 같은 `nullifierSecret`이라도 다른 `pollId`에서는 다른 nullifier 생성
+2. **결정적**: 같은 `nullifierSecret`과 `pollId` 조합이면 항상 같은 nullifier
+3. **중복 방지**: 같은 pollId에서 같은 nullifier는 재투표로 인식
+4. **역추적 불가능**: 해시값이므로 원본 정보 복원 불가능
+
+**Etherscan에서 작게 보이는 이유**:
+- Etherscan 표시 문제로 매우 큰 숫자가 작게 보일 수 있음
+- "Hex" 모드로 전체 값 확인 가능
+- Topics 섹션에서 정확한 값 확인 가능
+
+### isUpdate 플래그
+
+**컨트랙트 로직** (`contracts/solidity/VotingV2.sol`):
+```solidity
+bool isUpdate = votes[pollId][nullifier].exists;
+```
+
+**동작**:
+1. 첫 투표: `votes[pollId][nullifier].exists == false` → `isUpdate = false`
+2. 재투표: `votes[pollId][nullifier].exists == true` → `isUpdate = true`
+
+**재투표 시나리오**:
+- 첫 투표: `isUpdate: False`, `totalVotes += 1`
+- 재투표: `isUpdate: True`, `totalVotes` 증가 없음, 기존 투표 정보 덮어쓰기
+

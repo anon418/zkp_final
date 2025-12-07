@@ -189,7 +189,7 @@ const createPollSchema = z.object({
       })
     )
     .min(2)
-    .max(10),
+    .max(8), // 최대 8개 (ZKP 회로 제약)
   startTime: z.string().datetime(),
   endTime: z.string().datetime(),
   creatorWallet: z.string().regex(/^0x[a-fA-F0-9]{40}$/),

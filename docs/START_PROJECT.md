@@ -125,10 +125,41 @@ powershell -ExecutionPolicy Bypass -File setup-zkp-files.ps1
 
 ---
 
+## 🚀 배포 (Vercel)
+
+### 배포 전 체크리스트
+
+**코드 품질**:
+- [x] 디버깅 로그 제어됨 (`logger.ts`)
+- [x] 불필요한 `console.log` 제거됨
+- [x] 하드코딩된 테스트 값 없음
+
+**환경 변수**:
+- [x] MongoDB URI 설정
+- [x] Sepolia RPC URL 설정
+- [x] Relayer Private Key 설정
+
+**배포**:
+```bash
+# Vercel에 배포
+vercel deploy --prod
+```
+
+### 배포 후 확인 사항
+
+1. **환경 변수 확인** (Vercel 대시보드)
+2. **기능 테스트**: 투표 생성, 참여, 결과 확인
+3. **Etherscan 검증**: 트랜잭션 확인
+
+**자세한 배포 가이드**: Vercel 공식 문서 참고
+
+---
+
 ## 📖 추가 문서
 
 - **README.md** - 프로젝트 소개
-- **docs/DEPLOYMENT_GUIDE.md** - 배포 가이드 (Vercel + 시연 환경)
+- **docs/USER_GUIDE.md** - 사용자 가이드
+- **docs/ARCHITECTURE.md** - 시스템 구조
 
 ---
 

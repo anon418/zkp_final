@@ -12,10 +12,32 @@ const BASE_URL =
     ? process.env.NEXT_PUBLIC_BASE_URL || window.location.origin
     : process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'
 
+// 도메인만 추출 (프로토콜 제거)
+const getBaseDomain = (url: string): string => {
+  try {
+    const urlObj = new URL(url)
+    return urlObj.hostname
+  } catch {
+    // URL 파싱 실패 시 원본 반환
+    return url.replace(/^https?:\/\//, '').replace(/\/.*$/, '')
+  }
+}
+
 export default function QrPage() {
   const params = useParams()
   const pollId = params.pollId as string
+  
+  // 일반 웹 링크
   const votePageUrl = `${BASE_URL}/vote/${pollId}`
+  
+  // MetaMask 딥링크 (모바일에서 MetaMask 앱으로 바로 열림)
+  const BASE_DOMAIN = getBaseDomain(BASE_URL)
+  const metamaskDeepLink = `https://metamask.app.link/dapp/${BASE_DOMAIN}/vote/${pollId}`
+  
+  // 모바일에서는 MetaMask 딥링크 사용, 데스크톱에서는 일반 링크 사용
+  const qrCodeUrl = typeof window !== 'undefined' && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
+    ? metamaskDeepLink
+    : votePageUrl
 
   const [copySuccess, setCopySuccess] = useState(false)
 
@@ -111,7 +133,8 @@ export default function QrPage() {
 
   const copyToClipboard = async () => {
     try {
-      await navigator.clipboard.writeText(votePageUrl)
+      // 모바일에서는 MetaMask 딥링크, 데스크톱에서는 일반 링크 복사
+      await navigator.clipboard.writeText(qrCodeUrl)
       setCopySuccess(true)
       setTimeout(() => setCopySuccess(false), 2000)
     } catch (err) {
@@ -185,7 +208,7 @@ export default function QrPage() {
         <div style={cardStyle}>
           <div style={qrContainerStyle}>
             <div style={qrWrapperStyle}>
-              <QRCode value={votePageUrl} size={qrSize} />
+              <QRCode value={qrCodeUrl} size={qrSize} />
             </div>
           </div>
 
@@ -297,9 +320,16 @@ export default function QrPage() {
           >
             📱 <strong>모바일 사용 안내</strong>
             <br />
-            스마트폰에서 투표하려면:
+            스마트폰에서 QR 코드를 스캔하면:
             <br />
-            1. MetaMask 앱 설치 필요 (iOS/Android)
+            ✅ MetaMask 앱이 자동으로 열립니다 (설치되어 있는 경우)
+            <br />
+            ✅ MetaMask 앱이 없으면 앱스토어로 이동합니다
+            <br />
+            <br />
+            <strong>필수 사항:</strong>
+            <br />
+            1. MetaMask 앱 설치 (iOS/Android)
             <br />
             2. 앱에서 Sepolia 테스트넷 추가
             <br />
@@ -335,8 +365,31 @@ export default function QrPage() {
             fontFamily: 'monospace',
           }}
         >
-          {votePageUrl}
+          {qrCodeUrl}
         </div>
+        
+        {/* 일반 웹 링크도 표시 (참고용) */}
+        {qrCodeUrl !== votePageUrl && (
+          <div
+            style={{
+              padding: '12px',
+              background: '#f1f5f9',
+              border: '1px solid #cbd5e1',
+              borderRadius: '8px',
+              fontSize: '0.8rem',
+              color: '#64748b',
+              wordBreak: 'break-all',
+              textAlign: 'center' as const,
+              fontFamily: 'monospace',
+              marginTop: '8px',
+            }}
+          >
+            <div style={{ marginBottom: '4px', fontSize: '0.75rem', color: '#94a3b8' }}>
+              일반 웹 링크:
+            </div>
+            {votePageUrl}
+          </div>
+        )}
 
         {/* 푸터 */}
         <div

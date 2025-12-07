@@ -34,6 +34,21 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['circomlibjs'],
   // Next.js 15에서는 serverComponentsExternalPackages 대신 다른 방식 사용
   // webpack externals로 처리 (위에서 이미 처리됨)
+  
+  // 성능 최적화: ZKP 파일 캐싱 헤더
+  async headers() {
+    return [
+      {
+        source: '/zkp/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+    ]
+  },
 }
 
 export default nextConfig

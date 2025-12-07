@@ -21,6 +21,7 @@ import { usePollData } from '@/hooks/usePollData'
 import { usePollResults } from '@/hooks/usePollResults'
 import { useCountdown } from '@/hooks/useCountdown'
 import { useMyVote } from '@/hooks/useMyVote'
+import { useZKPPreload } from '@/hooks/useZKPPreload'
 import { generateProofInWorker } from '@/lib/proofWorker'
 import { submitVote } from '@/lib/voteSubmission'
 
@@ -55,8 +56,11 @@ export default function PollDetailPage() {
   const { participantCount, voteResults, showResults, setShowResults } =
     usePollResults(pollId, pollData)
   const timeLeft = useCountdown(pollData?.endTime || null)
-  const { txHash, publicSignals, previousCandidate, setTxHash, setPublicSignals } =
+  const { txHash, publicSignals, previousCandidate, isReVote: isReVoteFromHook, setTxHash, setPublicSignals, setIsReVote: setIsReVoteFromHook } =
     useMyVote(pollId)
+  
+  // ZKP 파일 프리로딩 (성능 최적화)
+  const { isPreloaded } = useZKPPreload()
 
   // 이전 선택지가 있으면 초기값으로 설정
   const [selectedOption, setSelectedOption] = useState<string | null>(previousCandidate || null)
@@ -75,11 +79,34 @@ export default function PollDetailPage() {
   const [statusMessage, setStatusMessage] = useState('')
   const [relayerEnabled, setRelayerEnabled] = useState(true)
 
-  // 재투표 여부 상태
-  const [isReVote, setIsReVote] = useState(false)
-
+  // 재투표 여부 상태 (useMyVote에서 가져온 값으로 초기화)
+  const [isReVote, setIsReVote] = useState(isReVoteFromHook || false)
+  
   // 영수증 표시/숨김 상태
-  const [showReceipt, setShowReceipt] = useState(false)
+  // 초기값: txHash가 있으면 영수증 표시 (새로고침 후에도 유지)
+  const [showReceipt, setShowReceipt] = useState(() => {
+    // 클라이언트 사이드에서만 실행
+    if (typeof window === 'undefined') return false
+    // 로컬 스토리지에서 txHash 확인
+    const storedTxHash = localStorage.getItem(`vote_${pollId}_txHash`)
+    return !!storedTxHash
+  })
+  
+  // useMyVote에서 가져온 재투표 여부가 변경되면 동기화
+  useEffect(() => {
+    if (isReVoteFromHook !== undefined) {
+      setIsReVote(isReVoteFromHook)
+      console.log(`[PollDetail] isReVoteFromHook 변경: ${isReVoteFromHook}`)
+    }
+  }, [isReVoteFromHook])
+  
+  // txHash가 로드되면 영수증 자동 표시 (새로고침 후에도 유지)
+  useEffect(() => {
+    if (txHash && !showReceipt) {
+      console.log(`[PollDetail] txHash 로드됨 - 영수증 자동 표시 (isReVote: ${isReVote})`)
+      setShowReceipt(true)
+    }
+  }, [txHash, showReceipt, isReVote])
 
   // 🔗 링크 복사
   const handleCopyLink = () => {
@@ -221,9 +248,18 @@ export default function PollDetailPage() {
             `vote_${pollId}_timestamp`,
             new Date().toISOString()
           )
+          // 재투표 여부 저장 (새로고침 후에도 유지)
+          localStorage.setItem(`vote_${pollId}_isReVote`, String(result.isReVote === true))
 
-          // 재투표 시 영수증 갱신
+          // 재투표 시 영수증 갱신 (새로운 txHash로 업데이트)
           if (result.isReVote && address) {
+            // 재투표 시 새로운 txHash가 이미 result.txHash에 있으므로 즉시 업데이트
+            if (result.txHash) {
+              setTxHash(result.txHash)
+              console.log(`[PollDetail] 재투표 완료 - 새로운 txHash: ${result.txHash.substring(0, 10)}...`)
+            }
+            
+            // 서버에서 최신 정보 확인 (선택적, 백그라운드)
             setTimeout(async () => {
               try {
                 const { getApiUrl } = await import('@/lib/api-utils')
@@ -240,7 +276,16 @@ export default function PollDetailPage() {
                     myVoteData.hasVoted &&
                     myVoteData.vote
                   ) {
-                    setTxHash(myVoteData.vote.txHash)
+                    // 재투표 시 새로운 txHash와 isReVote로 업데이트 (서버에서 확인한 최신 값)
+                    if (myVoteData.vote.txHash && myVoteData.vote.txHash !== result.txHash) {
+                      console.log(`[PollDetail] 서버에서 최신 txHash 확인: ${myVoteData.vote.txHash.substring(0, 10)}...`)
+                      setTxHash(myVoteData.vote.txHash)
+                    }
+                    // 재투표 여부도 서버에서 확인한 값으로 업데이트
+                    if (myVoteData.isReVote !== undefined) {
+                      setIsReVote(myVoteData.isReVote)
+                      console.log(`[PollDetail] 서버에서 재투표 여부 확인: isReVote=${myVoteData.isReVote}`)
+                    }
                     if (myVoteData.vote.nullifierHash) {
                       setPublicSignals([
                         myVoteData.vote.merkleRoot || '0x' + '0'.repeat(64),
@@ -489,6 +534,7 @@ export default function PollDetailPage() {
           candidates={pollData.candidates}
           selectedOption={selectedOption}
           onSelect={setSelectedOption}
+          disabled={pollData ? new Date() > new Date(pollData.endTime) : false}
         />
 
         {/* 지갑 연결 안내 (연결 전에만 표시) */}
@@ -552,7 +598,12 @@ export default function PollDetailPage() {
         {/* 투표 버튼 - 바로 여기서 투표 */}
         <button
           onClick={handleVoteClick}
-          disabled={!selectedOption || !isConnected || voting}
+          disabled={
+            !selectedOption ||
+            !isConnected ||
+            voting ||
+            (pollData ? new Date() > new Date(pollData.endTime) : false)
+          }
           style={{
             width: '100%',
             padding: 16,
@@ -560,17 +611,29 @@ export default function PollDetailPage() {
             borderRadius: 12,
             border: 'none',
             background:
-              !selectedOption || !isConnected || voting
+              !selectedOption ||
+              !isConnected ||
+              voting ||
+              (pollData ? new Date() > new Date(pollData.endTime) : false)
                 ? 'rgba(255,255,255,0.1)'
                 : 'linear-gradient(135deg, #4facfe, #00f2fe)',
             color: '#fff',
             cursor:
-              !selectedOption || !isConnected || voting
+              !selectedOption ||
+              !isConnected ||
+              voting ||
+              (pollData ? new Date() > new Date(pollData.endTime) : false)
                 ? 'not-allowed'
                 : 'pointer',
             fontWeight: 600,
             fontSize: '1.1rem',
-            opacity: !selectedOption || !isConnected || voting ? 0.5 : 1,
+            opacity:
+              !selectedOption ||
+              !isConnected ||
+              voting ||
+              (pollData ? new Date() > new Date(pollData.endTime) : false)
+                ? 0.5
+                : 1,
           }}
         >
           {voting
@@ -597,6 +660,12 @@ export default function PollDetailPage() {
               borderRadius: '12px',
             }}
           >
+            {/* 디버깅: 재투표 여부 확인 */}
+            {process.env.NODE_ENV === 'development' && (
+              <div style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.5)', marginBottom: '8px' }}>
+                [DEBUG] isReVote: {String(isReVote)}, isReVoteFromHook: {String(isReVoteFromHook)}, txHash: {txHash?.substring(0, 10)}...
+              </div>
+            )}
             {/* 영수증 토글 버튼 (왼쪽 상단) */}
             <div style={{ marginBottom: '16px', textAlign: 'left' }}>
               <button

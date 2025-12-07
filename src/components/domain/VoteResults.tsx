@@ -105,6 +105,7 @@ export default function VoteResults({
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       marginBottom: '8px',
+                      gap: '16px', // 후보명과 표수 사이 간격 추가
                     }}
                   >
                     <span
@@ -112,6 +113,7 @@ export default function VoteResults({
                         fontSize: '1.1rem',
                         fontWeight: 600,
                         color: '#fff',
+                        flex: 1, // 남은 공간 차지
                       }}
                     >
                       {idx === 0 && result.votes > 0 ? '🏆 ' : ''}
@@ -122,6 +124,8 @@ export default function VoteResults({
                         fontSize: '1rem',
                         fontWeight: 700,
                         color: idx === 0 ? '#22c55e' : '#94a3b8',
+                        whiteSpace: 'nowrap', // 줄바꿈 방지
+                        marginLeft: 'auto', // 오른쪽 정렬
                       }}
                     >
                       {result.votes}표 ({percentage}%)

@@ -23,8 +23,13 @@ import {
   VOTING_V2_ADDRESS,
   electionExists,
   createElectionOnChain,
+  getVotingV2ContractWithSigner,
 } from '@/lib/contractsV2'
 import { debug, info, warn, error } from '@/lib/logger'
+import { ensureElectionExists } from '@/lib/services/election.service'
+import { sendVoteTransaction } from '@/lib/services/vote-transaction.service'
+import { parseVoteCastEvent } from '@/lib/services/event-parser.service'
+import { saveVoteToDB } from '@/lib/services/vote-db.service'
 
 // Zod 검증 스키마
 const relaySchema = z.object({
@@ -42,17 +47,72 @@ const relaySchema = z.object({
     .optional(),
 })
 
-// Nonce 관리 (간단한 in-memory 큐)
-let nonceQueue: number | null = null
+// Nonce 관리: 동시성 문제 방지를 위한 락 및 큐
+let nonceLock = false
+let lastNonce: number | null = null
+let lastNonceTime = 0
+const NONCE_CACHE_TTL = 10000 // 10초 동안 nonce 캐시 유지 (2초에서 증가)
 
+// Nonce 캐시 무효화 함수 (에러 발생 시 사용)
+function invalidateNonceCache() {
+  lastNonce = null
+  lastNonceTime = 0
+  debug(`[Relayer] Nonce cache invalidated`)
+}
+
+// Nonce 관리: 항상 최신 상태에서 가져오기 (동시성 문제 방지)
+// @param incrementCache: true면 캐시를 증가시키고, false면 읽기만 함 (재확인용)
 async function getNextNonce(
   provider: ethers.Provider,
-  address: string
+  address: string,
+  incrementCache: boolean = true
 ): Promise<number> {
-  if (nonceQueue === null) {
-    nonceQueue = await provider.getTransactionCount(address, 'latest')
+  // 락이 걸려있으면 잠시 대기
+  while (nonceLock) {
+    await new Promise((resolve) => setTimeout(resolve, 50))
   }
-  return nonceQueue++
+
+  // 락 획득
+  nonceLock = true
+
+  try {
+    const now = Date.now()
+
+    // 블록체인에서 최신 nonce 가져오기 (항상 최신 상태 확인)
+    const networkNonce = await provider.getTransactionCount(address, 'pending')
+
+    // 캐시된 nonce와 비교하여 더 큰 값 사용
+    let nextNonce: number
+    if (
+      lastNonce !== null &&
+      now - lastNonceTime < NONCE_CACHE_TTL &&
+      lastNonce >= networkNonce
+    ) {
+      // 캐시가 유효하고 블록체인보다 크면 캐시 사용
+      nextNonce = incrementCache ? lastNonce + 1 : lastNonce
+    } else {
+      // 캐시가 없거나 만료되었거나 블록체인이 더 크면 블록체인 값 사용
+      nextNonce = networkNonce
+    }
+
+    // 캐시 업데이트 (incrementCache가 true일 때만)
+    if (incrementCache) {
+      lastNonce = nextNonce
+      lastNonceTime = now
+      debug(
+        `[Relayer] Fetched nonce from chain: ${networkNonce}, using: ${nextNonce} (cache updated)`
+      )
+    } else {
+      debug(
+        `[Relayer] Fetched nonce from chain: ${networkNonce}, using: ${nextNonce} (read-only, no cache update)`
+      )
+    }
+
+    return nextNonce
+  } finally {
+    // 락 해제
+    nonceLock = false
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -106,6 +166,46 @@ export async function POST(request: NextRequest) {
     const provider = new ethers.JsonRpcProvider(rpcUrl)
     const relayer = new ethers.Wallet(relayerKey, provider)
 
+    // Relayer 잔액 확인 (사전 체크)
+    try {
+      const relayerBalance = await provider.getBalance(relayer.address)
+      const balanceEth = parseFloat(ethers.formatEther(relayerBalance))
+      const minBalanceEth = 0.01 // 최소 0.01 ETH 권장
+
+      if (balanceEth < minBalanceEth) {
+        warn(
+          `[Relayer] ⚠️ Relayer 잔액이 낮습니다: ${balanceEth.toFixed(
+            4
+          )} ETH (권장: ${minBalanceEth} ETH 이상)`
+        )
+        warn(`[Relayer] ⚠️ Relayer 주소: ${relayer.address}`)
+        warn(`[Relayer] ⚠️ Sepolia Faucet: https://sepoliafaucet.com/`)
+
+        // 잔액이 너무 낮으면 (0.001 ETH 미만) 에러 반환
+        if (balanceEth < 0.001) {
+          return NextResponse.json(
+            {
+              error: 'INSUFFICIENT_FUNDS',
+              message: `Relayer 잔액이 부족합니다. 현재 잔액: ${balanceEth.toFixed(
+                4
+              )} ETH. 최소 0.001 ETH 이상 필요합니다.`,
+              code: 'GAS_INSUFFICIENT',
+              relayerAddress: relayer.address,
+              currentBalance: balanceEth,
+              minRequiredBalance: 0.001,
+              faucetUrl: 'https://sepoliafaucet.com/',
+            },
+            { status: 503 }
+          )
+        }
+      } else {
+        debug(`[Relayer] Relayer 잔액 확인: ${balanceEth.toFixed(4)} ETH`)
+      }
+    } catch (balanceError) {
+      warn(`[Relayer] ⚠️ 잔액 확인 실패: ${balanceError}`)
+      // 잔액 확인 실패해도 계속 진행 (네트워크 문제일 수 있음)
+    }
+
     // 컨트랙트 인스턴스
     const contract = new ethers.Contract(contractAddress, contractABI, relayer)
 
@@ -120,7 +220,45 @@ export async function POST(request: NextRequest) {
     await dbConnect()
 
     // nullifierHash 추출 (publicSignals[2] 가정)
-    const nullifierHash = publicSignals[2] || publicSignals[0]
+    // publicSignals[2]는 BigInt 문자열이므로, 컨트랙트에 전달할 때는 BigInt로 변환 필요
+
+    // 디버깅: publicSignals 전체 구조 확인
+    debug(`[Relayer] ========== Public Signals 디버깅 ==========`)
+    debug(
+      `[Relayer] publicSignals 타입: ${
+        Array.isArray(publicSignals) ? 'Array' : typeof publicSignals
+      }`
+    )
+    debug(
+      `[Relayer] publicSignals 길이: ${
+        Array.isArray(publicSignals) ? publicSignals.length : 'N/A'
+      }`
+    )
+    if (Array.isArray(publicSignals)) {
+      publicSignals.forEach((signal, idx) => {
+        debug(
+          `[Relayer] publicSignals[${idx}]: 타입=${typeof signal}, 값=${signal
+            ?.toString()
+            .substring(0, 50)}...`
+        )
+      })
+    }
+
+    const nullifierHashRaw = publicSignals[2] || publicSignals[0]
+    debug(
+      `[Relayer] nullifierHashRaw: 타입=${typeof nullifierHashRaw}, 값=${nullifierHashRaw?.toString()}`
+    )
+
+    const nullifierHash = nullifierHashRaw.startsWith('0x')
+      ? nullifierHashRaw
+      : `0x${BigInt(nullifierHashRaw).toString(16).padStart(64, '0')}`
+
+    debug(
+      `[Relayer] nullifierHash 변환: 원본=${nullifierHashRaw
+        ?.toString()
+        .substring(0, 30)}..., 변환=${nullifierHash.substring(0, 30)}...`
+    )
+    debug(`[Relayer] nullifierHash 전체: ${nullifierHash}`)
 
     // 재투표 감지 (마지막 표만 유효 - 컨트랙트 정책과 일치)
     // 컨트랙트는 재투표를 허용하고 마지막 표만 유효하므로,
@@ -143,15 +281,17 @@ export async function POST(request: NextRequest) {
     }
 
     // VotingV2: Election 존재 여부 확인 및 자동 생성
-    const exists = await electionExists(pollIdNumeric)
-    if (!exists) {
-      info(
-        `[Relayer] Election not found for pollId ${pollIdNumeric}, creating...`
-      )
+    const electionResult = await ensureElectionExists({
+      pollId: validatedData.pollId,
+      pollIdNumeric,
+      provider,
+      relayer,
+      getNextNonce,
+      invalidateNonceCache,
+    })
 
-      // DB에서 Poll 정보 가져오기
-      const poll = await Poll.findOne({ pollId: validatedData.pollId })
-      if (!poll) {
+    if (!electionResult.success) {
+      if (electionResult.error === 'POLL_NOT_FOUND') {
         return NextResponse.json(
           {
             error: 'POLL_NOT_FOUND',
@@ -160,244 +300,76 @@ export async function POST(request: NextRequest) {
           { status: 404 }
         )
       }
-
-      // Merkle Root (없으면 0x00...00)
-      const merkleRoot = poll.merkleRoot || ethers.ZeroHash
-
-      // 후보 이름 배열
-      const candidateNames = poll.candidates.map((c) => c.label)
-
-      // 시작/종료 시간 (Unix timestamp)
-      const startTime = Math.floor(new Date(poll.startTime).getTime() / 1000)
-      const endTime = Math.floor(new Date(poll.endTime).getTime() / 1000)
-
-      // Election 생성
-      try {
-        const createTxHash = await createElectionOnChain(
-          pollIdNumeric,
-          merkleRoot,
-          startTime,
-          endTime,
-          candidateNames,
-          relayer
-        )
-        info(
-          `[Relayer] Election created on-chain: ${createTxHash} for pollId ${pollIdNumeric}`
-        )
-
-        // Election 생성 트랜잭션 확인 대기 (1 confirmation)
-        await provider.waitForTransaction(createTxHash, 1)
-      } catch (createError: unknown) {
-        const err = createError as { message?: string }
-        error('[Relayer] Failed to create election:', err)
-        return NextResponse.json(
-          {
-            error: 'ELECTION_CREATION_FAILED',
-            message: '투표 생성에 실패했습니다.',
-            details: err.message || 'Unknown error',
-          },
-          { status: 500 }
-        )
-      }
+      return NextResponse.json(
+        {
+          error: electionResult.error || 'ELECTION_CREATION_FAILED',
+          message: '투표 생성에 실패했습니다.',
+          details: electionResult.error,
+        },
+        { status: 500 }
+      )
     }
 
-    // 재시도 로직
-    let txHash: string | null = null
-    let txReceipt: ethers.TransactionReceipt | null = null
+    // Election이 이미 존재하거나 생성 완료됨 (ensureElectionExists에서 처리됨)
 
-    while (attempt <= maxRetries) {
-      try {
-        debug(
-          `[Relayer] Attempt ${attempt + 1}/${maxRetries + 1} for pollId: ${
-            validatedData.pollId
-          }`
-        )
+    // Vote 트랜잭션 전송
+    const voteResult = await sendVoteTransaction({
+      pollIdNumeric,
+      proposalId: validatedData.proposalId,
+      proof: validatedData.proof,
+      publicSignals,
+      provider,
+      relayer,
+      getNextNonce,
+      invalidateNonceCache,
+      maxRetries,
+    })
 
-        // Nonce 관리
-        const nonce = await getNextNonce(provider, relayer.address)
-
-        // 디버깅: 재투표 감지용 로그
-        debug(
-          `[Relayer] 투표 제출 정보: pollId=${pollIdNumeric}, nullifier=${nullifierHash.substring(
-            0,
-            20
-          )}..., proposalId=${validatedData.proposalId}`
-        )
-        debug(
-          `[Relayer] Public Signals: [0]=${publicSignals[0]?.substring(
-            0,
-            20
-          )}..., [1]=${publicSignals[1]}, [2]=${publicSignals[2]?.substring(
-            0,
-            20
-          )}..., [3]=${publicSignals[3]?.substring(0, 20)}...`
-        )
-
-        // 가스 추정 + 20% 버퍼
-        // VotingV2: vote(pollId, proposalId, ...)
-        const estimatedGas = await contract.vote.estimateGas(
-          pollIdNumeric,
-          validatedData.proposalId,
-          proof.a,
-          proof.b,
-          proof.c,
-          publicSignals
-        )
-        const gasLimit = (estimatedGas * 120n) / 100n
-
-        const tx = await contract.vote(
-          pollIdNumeric,
-          validatedData.proposalId,
-          proof.a,
-          proof.b,
-          proof.c,
-          publicSignals,
-          { nonce, gasLimit }
-        )
-
-        txHash = tx.hash
-        info(`[Relayer] Transaction sent: ${txHash}`)
-        debug(
-          `[Relayer] Waiting for 2 confirmations (this may take 1-3 minutes)...`
-        )
-
-        // conf=2 대기 (타임아웃: 5분)
-        const startTime = Date.now()
-        try {
-          /**
-           * 첫 번째 confirmation 대기
-           *
-           * Promise.race를 사용하여:
-           * - tx.wait(1): 첫 번째 블록 컨펌 대기
-           * - timeout: 3분 내에 컨펌되지 않으면 타임아웃
-           *
-           * 반환 타입: ethers.TransactionReceipt (tx.wait의 반환 타입)
-           */
-          const receipt1 = (await Promise.race([
-            tx.wait(1),
-            new Promise<never>((_, reject) =>
-              setTimeout(
-                () => reject(new Error('First confirmation timeout')),
-                3 * 60 * 1000
-              )
-            ),
-          ])) as ethers.TransactionReceipt
-          const elapsed1 = ((Date.now() - startTime) / 1000).toFixed(1)
-          info(
-            `[Relayer] First confirmation received at block ${receipt1.blockNumber} (${elapsed1}s)`
-          )
-
-          // 두 번째 confirmation 대기
-          const receipt2 = (await Promise.race([
-            tx.wait(2),
-            new Promise<never>((_, reject) =>
-              setTimeout(
-                () => reject(new Error('Second confirmation timeout')),
-                2 * 60 * 1000
-              )
-            ),
-          ])) as ethers.TransactionReceipt
-          const elapsed2 = ((Date.now() - startTime) / 1000).toFixed(1)
-          info(
-            `[Relayer] Second confirmation received at block ${receipt2.blockNumber} (${elapsed2}s)`
-          )
-
-          txReceipt = receipt2
-          info(
-            `[Relayer] ✅ Transaction fully confirmed: ${txHash} (total: ${elapsed2}s)`
-          )
-        } catch (timeoutError: unknown) {
-          const err = timeoutError as { message?: string }
-          warn(`[Relayer] ⚠️ Confirmation timeout: ${err.message || 'Unknown'}`)
-          throw new Error(
-            `Transaction confirmation timeout. The transaction was sent (${txHash}) but confirmations are taking too long. Please check the transaction status manually.`
-          )
-        }
-        break
-      } catch (catchError: unknown) {
-        attempt++
-        const err = catchError as { message?: string }
-        error(
-          `[Relayer] Attempt ${attempt} failed:`,
-          err.message || 'Unknown error'
-        )
-
-        if (attempt > maxRetries) {
-          throw catchError
-        }
-
-        // 백오프: 2초 대기
-        await new Promise((resolve) => setTimeout(resolve, 2000))
-      }
+    if (!voteResult.success) {
+      return NextResponse.json(
+        {
+          error: 'VOTE_TRANSACTION_FAILED',
+          message: '투표 트랜잭션 전송에 실패했습니다.',
+          details: voteResult.error,
+        },
+        { status: 500 }
+      )
     }
 
-    if (!txHash || !txReceipt) {
-      throw new Error('Transaction failed after retries')
+    const txHash = voteResult.txHash
+    const txReceipt = voteResult.txReceipt
+
+    if (!txHash) {
+      return NextResponse.json(
+        {
+          error: 'VOTE_TRANSACTION_FAILED',
+          message: '트랜잭션 해시를 얻을 수 없습니다.',
+        },
+        { status: 500 }
+      )
+    }
+
+    // Receipt가 없어도 트랜잭션 해시가 있으면 계속 진행
+    if (!txReceipt) {
+      warn(
+        `[Relayer] ⚠️ No receipt available, but transaction hash exists: ${txHash}`
+      )
+      warn(
+        `[Relayer] ⚠️ Proceeding without event parsing. User can check transaction on Etherscan.`
+      )
     }
 
     // 트랜잭션 이벤트에서 VoteCast 이벤트 파싱하여 isUpdate 값 가져오기
-    let isUpdateFromEvent: boolean | null = null
-    try {
-      const contract = new ethers.Contract(contractAddress, contractABI, provider)
-      const voteCastEvent = contract.interface.getEvent('VoteCast')
-      
-      // 이벤트가 존재하는지 확인
-      if (voteCastEvent) {
-        const eventTopic = voteCastEvent.topicHash
-
-        // 트랜잭션 receipt의 logs에서 VoteCast 이벤트 찾기
-        for (const log of txReceipt.logs) {
-          // 컨트랙트 주소와 이벤트 토픽 확인
-          if (
-            log.address.toLowerCase() === contractAddress.toLowerCase() &&
-            log.topics[0] === eventTopic
-          ) {
-            try {
-              // parseLog를 사용하여 더 안전하게 파싱
-              const parsed = contract.interface.parseLog({
-                topics: log.topics as string[],
-                data: log.data,
-              })
-              
-              if (parsed && parsed.name === 'VoteCast') {
-                isUpdateFromEvent = parsed.args.isUpdate as boolean
-                debug(
-                  `[Relayer] VoteCast 이벤트에서 isUpdate 파싱 성공: ${isUpdateFromEvent}`
-                )
-                debug(
-                  `[Relayer] VoteCast 이벤트 상세: pollId=${parsed.args.pollId}, nullifier=${parsed.args.nullifier?.toString().substring(0, 10)}..., candidate=${parsed.args.candidate}, isUpdate=${parsed.args.isUpdate}`
-                )
-                break
-              }
-            } catch (parseError) {
-              // parseLog 실패 시 decodeEventLog 시도
-              try {
-                const decoded = contract.interface.decodeEventLog(
-                  'VoteCast',
-                  log.data,
-                  log.topics
-                )
-                isUpdateFromEvent = decoded.isUpdate as boolean
-                debug(
-                  `[Relayer] decodeEventLog로 isUpdate 파싱 성공: ${isUpdateFromEvent}`
-                )
-                break
-              } catch (decodeError) {
-                // 두 방법 모두 실패 시 다음 로그 시도
-                debug(
-                  `[Relayer] 이벤트 파싱 실패 (다른 이벤트일 수 있음):`,
-                  decodeError
-                )
-              }
-            }
-          }
-        }
-      } else {
-        warn(`[Relayer] VoteCast 이벤트를 찾을 수 없음 (ABI 확인 필요)`)
-      }
-    } catch (eventError) {
-      warn(`[Relayer] 이벤트 파싱 실패 (기존 로직 사용):`, eventError)
-    }
+    const eventResult = parseVoteCastEvent({
+      txReceipt,
+      txHash,
+      contractAddress,
+      contractABI,
+      provider,
+      pollIdNumeric,
+      publicSignals,
+    })
+    const isUpdateFromEvent = eventResult.isUpdate
 
     // Public Signals 추출 (영수증 표시용)
     const merkleRoot = publicSignals[0] || '0x' + '0'.repeat(64)
@@ -405,60 +377,49 @@ export async function POST(request: NextRequest) {
     const nullifierFromProof = publicSignals[2] || nullifierHash
     const voteCommitment = publicSignals[3] || '0x' + '0'.repeat(64)
 
-    // DB에 Vote 기록 또는 업데이트 (candidate + publicSignals 포함)
-    // 재투표인 경우 기존 레코드를 업데이트, 아니면 새로 생성
-    if (existingVote) {
-      // 재투표: 기존 레코드 업데이트 (마지막 표만 유효)
-      existingVote.candidate = String(validatedData.proposalId)
-      existingVote.txHash = txHash
-      existingVote.status = 'confirmed'
-      existingVote.confirmedAt = new Date()
-      // Public Signals도 업데이트 (영수증 표시용)
-      existingVote.merkleRoot = merkleRoot
-      existingVote.voteCommitment = voteCommitment
-      await existingVote.save()
-      info(
-        `[Relayer] Vote updated (re-vote) for pollId ${
-          validatedData.pollId
-        }, nullifier ${nullifierHash.substring(0, 10)}...`
-      )
-    } else {
-      // 첫 투표: 새 레코드 생성
-      // 주의: voterAddress는 저장하지 않음 (익명성 보호)
-      // candidate는 결과 집계를 위해 저장하되, 투표자 정보와 분리
-      await Vote.create({
-        pollId: validatedData.pollId,
-        candidate: String(validatedData.proposalId), // 후보 ID 저장 (결과 집계용)
-        nullifierHash,
-        txHash,
-        // voterAddress는 저장하지 않음 - 익명성 보호
-        status: 'confirmed',
-        confirmedAt: new Date(),
-        // Public Signals 저장 (영수증 표시용)
-        merkleRoot,
-        voteCommitment,
-      })
-      info(
-        `[Relayer] Vote created (first vote) for pollId ${validatedData.pollId}`
-      )
-    }
+    // DB에 Vote 기록 생성/업데이트
+    await saveVoteToDB({
+      pollId: validatedData.pollId,
+      proposalId: validatedData.proposalId,
+      nullifierHash,
+      txHash,
+      merkleRoot,
+      voteCommitment,
+      isUpdate: isUpdateFromEvent,
+      existingVote: !!existingVote,
+    })
 
     // 재투표 여부 확인
     // 1. 이벤트에서 파싱한 isUpdate 값 우선 사용
     // 2. 없으면 existingVote 확인 (DB 기반)
-    const isReVote = isUpdateFromEvent !== null ? isUpdateFromEvent : !!existingVote
+    const isReVote =
+      isUpdateFromEvent !== null ? isUpdateFromEvent : !!existingVote
 
+    // 영수증 반환 (receipt가 없어도 txHash는 반환)
     return NextResponse.json({
       success: true,
       txHash,
-      blockNumber: txReceipt.blockNumber,
-      confirmations: 2,
-      message: '투표가 성공적으로 제출되었습니다.',
+      blockNumber: txReceipt?.blockNumber || null, // Receipt가 없을 수 있음
+      confirmations: txReceipt?.blockNumber ? 2 : 0, // Receipt가 없으면 0
+      message: txReceipt?.blockNumber
+        ? '투표가 성공적으로 제출되었습니다.'
+        : '투표가 전송되었습니다. 확인 중입니다. (Etherscan에서 확인 가능)',
       isReVote, // 재투표 여부 반환 (컨트랙트 이벤트 기반)
       isUpdate: isUpdateFromEvent, // 컨트랙트의 실제 isUpdate 값 (선택적)
+      publicSignals: {
+        merkleRoot: publicSignals[0] || '0x' + '0'.repeat(64),
+        pollId: publicSignals[1] || '0',
+        nullifier: publicSignals[2] || nullifierHash,
+        voteCommitment: publicSignals[3] || '0x' + '0'.repeat(64),
+      },
+      // Receipt가 없을 때를 위한 안내
+      ...(txReceipt?.blockNumber === null && {
+        note: '트랜잭션이 전송되었지만 아직 확인되지 않았습니다. Etherscan에서 확인해주세요.',
+        etherscanUrl: `https://sepolia.etherscan.io/tx/${txHash}`,
+      }),
     })
   } catch (catchError: unknown) {
-    const err = catchError as { name?: string; message?: string }
+    const err = catchError as { name?: string; message?: string; code?: string }
     error('[Relayer] POST error:', err)
 
     // Zod 검증 오류
@@ -474,12 +435,59 @@ export async function POST(request: NextRequest) {
     }
 
     // 가스 부족
-    if (err.message?.includes('insufficient funds')) {
+    if (
+      err.message?.includes('insufficient funds') ||
+      err.code === 'INSUFFICIENT_FUNDS'
+    ) {
+      // Relayer 잔액 확인 및 상세 정보 제공
+      let balanceEth = 0
+      let balanceFormatted = '0'
+      let relayerAddress = 'unknown'
+      try {
+        // Provider가 스코프 밖에 있을 수 있으므로 다시 생성
+        const rpcUrl = process.env.INFURA_URL || process.env.ALCHEMY_URL
+        const relayerKey = process.env.RELAYER_PRIVATE_KEY
+        if (rpcUrl && relayerKey) {
+          const provider = new ethers.JsonRpcProvider(rpcUrl)
+          const relayer = new ethers.Wallet(relayerKey, provider)
+          relayerAddress = relayer.address
+          const relayerBalance = await provider.getBalance(relayer.address)
+          balanceEth = parseFloat(ethers.formatEther(relayerBalance))
+          balanceFormatted = balanceEth.toFixed(4)
+          error(`[Relayer] ⚠️ Relayer 잔액 부족: ${balanceFormatted} ETH`)
+          error(`[Relayer] ⚠️ Relayer 주소: ${relayer.address}`)
+          error(
+            `[Relayer] ⚠️ Sepolia Faucet에서 ETH를 받아주세요: https://sepoliafaucet.com/`
+          )
+        }
+      } catch (balanceCheckError) {
+        warn(`[Relayer] ⚠️ 잔액 확인 실패: ${balanceCheckError}`)
+      }
+
+      // 에러 메시지에서 필요한 금액 추출 시도
+      let requiredAmount = '0.001'
+      if (err.message?.includes('overshot')) {
+        // "overshot 808376425666138" 같은 메시지에서 부족한 금액 추출
+        const overshotMatch = err.message.match(/overshot\s+(\d+)/)
+        if (overshotMatch) {
+          const overshotWei = BigInt(overshotMatch[1])
+          requiredAmount = parseFloat(ethers.formatEther(overshotWei)).toFixed(
+            4
+          )
+        }
+      }
+
       return NextResponse.json(
         {
           error: 'INSUFFICIENT_FUNDS',
-          message: 'Relayer의 잔액이 부족합니다.',
+          message: `Relayer 잔액이 부족합니다. 현재 잔액: ${balanceFormatted} ETH. 최소 ${requiredAmount} ETH 이상 필요합니다.`,
           code: 'GAS_INSUFFICIENT',
+          relayerAddress: relayerAddress,
+          currentBalance: balanceEth,
+          minRequiredBalance: parseFloat(requiredAmount),
+          faucetUrl: 'https://sepoliafaucet.com/',
+          details:
+            'Relayer 지갑에 Sepolia ETH를 충전해주세요. Sepolia는 테스트넷이므로 무료로 받을 수 있습니다.',
         },
         { status: 503 }
       )

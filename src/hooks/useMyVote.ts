@@ -18,6 +18,7 @@ export function useMyVote(pollId: string) {
   const [txHash, setTxHash] = useState<string | null>(null)
   const [publicSignals, setPublicSignals] = useState<string[] | null>(null)
   const [previousCandidate, setPreviousCandidate] = useState<string | null>(null)
+  const [isReVote, setIsReVote] = useState<boolean>(false)
 
   useEffect(() => {
     async function checkMyVote() {
@@ -28,10 +29,15 @@ export function useMyVote(pollId: string) {
         const storedCandidate = localStorage.getItem(`vote_${pollId}_candidate`)
         const storedTxHash = localStorage.getItem(`vote_${pollId}_txHash`)
         const storedNullifier = localStorage.getItem(`vote_${pollId}_nullifier`)
+        const storedIsReVote = localStorage.getItem(`vote_${pollId}_isReVote`)
         
         if (storedCandidate && storedTxHash && storedNullifier) {
           setPreviousCandidate(storedCandidate)
           setTxHash(storedTxHash)
+          // 재투표 여부 복원 (로컬 스토리지에서)
+          if (storedIsReVote === 'true') {
+            setIsReVote(true)
+          }
           // Public Signals 재구성 (로컬 스토리지에서)
           setPublicSignals([
             '0x' + '0'.repeat(64), // Merkle Root (로컬에는 없음)
@@ -64,10 +70,20 @@ export function useMyVote(pollId: string) {
             txHash: data.vote.txHash?.substring(0, 10) + '...',
             nullifier: data.vote.nullifierHash?.substring(0, 10) + '...',
             candidate: data.vote.candidate,
+            isReVote: data.isReVote,
           })
 
           // 영수증 표시를 위해 txHash 설정
           setTxHash(data.vote.txHash)
+
+          // 재투표 여부 설정 (서버에서 확인한 값)
+          const isReVoteValue = data.isReVote === true
+          setIsReVote(isReVoteValue)
+          
+          // 로컬 스토리지에 isReVote 저장 (새로고침 후에도 유지)
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(`vote_${pollId}_isReVote`, String(isReVoteValue))
+          }
 
           // 이전 선택지 설정 (서버에서 가져온 값이 최신)
           if (data.vote.candidate) {
@@ -83,6 +99,9 @@ export function useMyVote(pollId: string) {
               data.vote.voteCommitment || '0x' + '0'.repeat(64), // Vote Commitment (DB에서 가져옴)
             ])
           }
+        } else {
+          // 투표하지 않은 경우 재투표 여부 초기화
+          setIsReVote(false)
         }
       } catch (err) {
         console.warn('⚠️ [PollDetail] 본인 투표 정보 조회 실패:', err)
@@ -92,6 +111,6 @@ export function useMyVote(pollId: string) {
     checkMyVote()
   }, [pollId, isConnected, address])
 
-  return { txHash, publicSignals, previousCandidate, setTxHash, setPublicSignals }
+  return { txHash, publicSignals, previousCandidate, isReVote, setTxHash, setPublicSignals, setIsReVote }
 }
 

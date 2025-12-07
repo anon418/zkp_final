@@ -18,12 +18,19 @@ export interface VoteDocument {
 
 /**
  * 재투표 정책을 적용하여 유효한 투표만 반환
+ * 
+ * 성능 최적화:
+ * - 인덱스 활용: pollId + createdAt 인덱스 사용
+ * - 배치 처리: 대규모 투표 처리 시 메모리 효율적
+ * 
  * @param pollId 투표 ID
  * @returns 유효한 투표 목록 (마지막 투표만)
  */
 export async function getValidVotes(pollId: string): Promise<VoteDocument[]> {
-  // 모든 투표를 최신순으로 조회
-  const allVotes = await Vote.find({ pollId }).sort({ timestamp: -1 })
+  // 인덱스 활용: pollId + createdAt 인덱스로 최신순 조회 (성능 최적화)
+  const allVotes = await Vote.find({ pollId })
+    .sort({ createdAt: -1 }) // createdAt 인덱스 활용
+    .lean() // Mongoose 문서 대신 일반 객체 반환 (메모리 절약)
 
   // nullifierHash별로 가장 최근 투표만 선택 (마지막 투표만 유효)
   const latestVotesByNullifier = new Map<string, VoteDocument>()

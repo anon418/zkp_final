@@ -15,12 +15,8 @@ export default function VoteReceipt({
   isReVote,
 }: VoteReceiptProps) {
   return (
-    <div
-      style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}
-    >
-      <div style={{ fontSize: '2rem' }}>
-        {isReVote ? '🔄' : '✅'}
-      </div>
+    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '16px' }}>
+      <div style={{ fontSize: '2rem' }}>{isReVote ? '🔄' : '✅'}</div>
       <div style={{ flex: 1 }}>
         <h3
           style={{
@@ -55,8 +51,7 @@ export default function VoteReceipt({
               • 이전 투표는 자동으로 무효화되었습니다
               <br />
               • 투표 결과에서 이번 선택만 반영됩니다
-              <br />
-              • 총 투표 수는 증가하지 않습니다 (재투표이므로)
+              <br />• 총 투표 수는 증가하지 않습니다 (재투표이므로)
             </p>
             <p
               style={{
@@ -67,12 +62,71 @@ export default function VoteReceipt({
                 borderTop: '1px solid rgba(59, 130, 246, 0.3)',
               }}
             >
-              💡 <strong>확인 방법:</strong> Etherscan의 <code>VoteCast</code> 이벤트에서{' '}
-              <code>isUpdate: True</code>를 확인하세요. 같은 <code>nullifier</code>로 여러 번
-              투표해도 마지막 것만 유효합니다.
+              💡 <strong>확인 방법:</strong> Etherscan에서 <code>VoteCast</code>{' '}
+              이벤트를 확인하세요.
+              <br />
+              <br />
+              <strong style={{ color: '#fbbf24' }}>⚠️ 중요:</strong> Etherscan의
+              Data 섹션은 큰 숫자(uint256) 디코딩 오류가 있을 수 있습니다.
+              <br />
+              <strong style={{ color: '#22c55e' }}>✅ 정확한 확인 방법:</strong>
+              <br />• <strong>Topics 섹션</strong>에서 <code>pollId</code>와{' '}
+              <code>nullifier</code> 확인 (가장 정확)
+              <br />• <strong>Data 섹션</strong>에서 <code>isUpdate</code> 확인
+              (첫 투표: <code>false</code>, 재투표: <code>true</code>)
+              <br />• 같은 <code>nullifier</code>로 여러 번 투표해도 마지막 것만
+              유효합니다.
+              <br />
+              <br />
+              📖 자세한 내용은 프로젝트의 <code>docs/ETHERSCAN_GUIDE.md</code>를
+              참고하세요.
             </p>
           </div>
         )}
+        
+        {/* 일반 투표 시 Etherscan 안내 */}
+        {!isReVote && (
+          <div
+            style={{
+              fontSize: '0.85rem',
+              color: 'rgba(255,255,255,0.9)',
+              marginBottom: '16px',
+              padding: '12px',
+              background: 'rgba(255, 193, 7, 0.15)',
+              border: '1px solid rgba(255, 193, 7, 0.4)',
+              borderRadius: '8px',
+            }}
+          >
+            <p style={{ margin: '0 0 8px 0', fontWeight: 600 }}>
+              💡 <strong>Etherscan 확인 시 주의사항</strong>
+            </p>
+            <p style={{ margin: '0 0 8px 0', fontSize: '0.8rem' }}>
+              <strong style={{ color: '#fbbf24' }}>⚠️ 중요:</strong> Etherscan의
+              Data 섹션은 큰 숫자(uint256) 디코딩 오류가 있을 수 있습니다.
+              <br />
+              <strong style={{ color: '#22c55e' }}>✅ 정확한 확인 방법:</strong>
+              <br />• <strong>Topics 섹션</strong>에서 <code>pollId</code>와{' '}
+              <code>nullifier</code> 확인 (가장 정확)
+              <br />• <strong>Data 섹션</strong>에서 <code>isUpdate</code> 확인
+              (첫 투표: <code>false</code>, 재투표: <code>true</code>)
+              <br />• Data 섹션의 <code>pollId</code>와 <code>nullifier</code>는
+              디코딩 오류로 잘못 표시될 수 있으므로 Topics 섹션을 기준으로 확인하세요.
+            </p>
+            <p
+              style={{
+                margin: '8px 0 0 0',
+                fontSize: '0.75rem',
+                color: 'rgba(255,255,255,0.7)',
+                paddingTop: '8px',
+                borderTop: '1px solid rgba(255, 193, 7, 0.3)',
+              }}
+            >
+              📖 자세한 내용은 프로젝트의 <code>docs/ETHERSCAN_GUIDE.md</code>를
+              참고하세요.
+            </p>
+          </div>
+        )}
+        
         <p
           style={{
             fontSize: '0.9rem',
@@ -213,8 +267,8 @@ export default function VoteReceipt({
                     marginTop: '4px',
                   }}
                 >
-                  🔒 이 값은 투표 내용을 암호화한 것이며, 원본 투표는
-                  복원할 수 없습니다
+                  🔒 이 값은 투표 내용을 암호화한 것이며, 원본 투표는 복원할 수
+                  없습니다
                 </div>
               </div>
             </div>
@@ -256,41 +310,58 @@ export default function VoteReceipt({
         </div>
 
         {/* Etherscan 링크 */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-          <a
-            href={`https://sepolia.etherscan.io/tx/${txHash}#eventlog`}
-            target="_blank"
-            rel="noopener noreferrer"
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            <a
+              href={`https://sepolia.etherscan.io/tx/${txHash}#eventlog`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontSize: '0.75rem',
+                padding: '8px 16px',
+                background: 'rgba(59, 130, 246, 0.2)',
+                color: '#60a5fa',
+                borderRadius: '20px',
+                textDecoration: 'none',
+                fontWeight: 600,
+                border: '1px solid rgba(59, 130, 246, 0.3)',
+              }}
+            >
+              🔍 Etherscan에서 ZKP 검증 확인
+            </a>
+            <a
+              href={`https://sepolia.etherscan.io/address/${VERIFIER_ADDRESS}#code`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                fontSize: '0.75rem',
+                padding: '8px 16px',
+                background: 'rgba(34, 197, 94, 0.2)',
+                color: '#4ade80',
+                borderRadius: '20px',
+                textDecoration: 'none',
+                fontWeight: 600,
+                border: '1px solid rgba(34, 197, 94, 0.3)',
+              }}
+            >
+              📜 Verifier 컨트랙트 보기
+            </a>
+          </div>
+          <div
             style={{
-              fontSize: '0.75rem',
-              padding: '8px 16px',
-              background: 'rgba(59, 130, 246, 0.2)',
-              color: '#60a5fa',
-              borderRadius: '20px',
-              textDecoration: 'none',
-              fontWeight: 600,
-              border: '1px solid rgba(59, 130, 246, 0.3)',
+              fontSize: '0.7rem',
+              color: 'rgba(255,255,255,0.6)',
+              padding: '8px 12px',
+              background: 'rgba(59, 130, 246, 0.1)',
+              borderRadius: '6px',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
             }}
           >
-            🔍 Etherscan에서 ZKP 검증 확인
-          </a>
-          <a
-            href={`https://sepolia.etherscan.io/address/${VERIFIER_ADDRESS}#code`}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              fontSize: '0.75rem',
-              padding: '8px 16px',
-              background: 'rgba(34, 197, 94, 0.2)',
-              color: '#4ade80',
-              borderRadius: '20px',
-              textDecoration: 'none',
-              fontWeight: 600,
-              border: '1px solid rgba(34, 197, 94, 0.3)',
-            }}
-          >
-            📜 Verifier 컨트랙트 보기
-          </a>
+            💡 <strong>확인 팁:</strong> Etherscan에서 <strong>Logs 탭</strong> →{' '}
+            <code>VoteCast</code> 이벤트 → <strong>Topics 섹션</strong>에서{' '}
+            <code>pollId</code>와 <code>nullifier</code>를 확인하세요. Data 섹션은
+            디코딩 오류가 있을 수 있습니다.
+          </div>
         </div>
 
         {/* ZKP 검증 가이드 */}
@@ -350,8 +421,8 @@ function ZKPVerificationGuide() {
           }}
         >
           <div style={{ marginBottom: '8px' }}>
-            <strong style={{ color: '#60a5fa' }}>1단계:</strong>{' '}
-            Etherscan 페이지에서 <strong>"Logs" 탭</strong>을 클릭하세요
+            <strong style={{ color: '#60a5fa' }}>1단계:</strong> Etherscan
+            페이지에서 <strong>"Logs" 탭</strong>을 클릭하세요
           </div>
           <div>
             <strong style={{ color: '#60a5fa' }}>2단계:</strong>{' '}
@@ -385,19 +456,31 @@ function ZKPVerificationGuide() {
                   color: 'rgba(255,255,255,0.7)',
                 }}
               >
-                → <strong>Logs 탭</strong>에서 <code>VoteCast</code> 이벤트가{' '}
-                <strong style={{ color: '#22c55e' }}>
-                  디코딩되어 보이면 성공
+                → <strong>Logs 탭</strong>에서 <code>VoteCast</code> 이벤트를
+                찾으세요
+                <br />
+                <br />
+                <strong style={{ color: '#fbbf24' }}>
+                  ⚠️ Etherscan 디코딩 주의:
                 </strong>
-                입니다!
-                <br />→ Decoded 데이터에서 <code>pollId</code>,{' '}
-                <code>nullifier</code>, <code>isUpdate</code>를 확인할 수
-                있습니다
-                <br />→ <code>isUpdate: False</code> = 첫 투표,{' '}
-                <code>isUpdate: True</code> = 재투표
+                <br />• <strong>Topics 섹션</strong>에서 <code>pollId</code>와{' '}
+                <code>nullifier</code> 확인 (가장 정확)
+                <br />• <strong>Data 섹션</strong>에서 <code>isUpdate</code>{' '}
+                확인
+                <br />• Data 섹션의 <code>pollId</code>와 <code>nullifier</code>
+                는 디코딩 오류로 잘못 표시될 수 있음
                 <br />
                 <br />
-                <strong style={{ color: '#fbbf24' }}>💡 재투표 시나리오:</strong>
+                <strong style={{ color: '#22c55e' }}>✅ 확인 방법:</strong>
+                <br />• <code>isUpdate: False</code> = 첫 투표
+                <br />• <code>isUpdate: True</code> = 재투표
+                <br />• Topics의 <code>pollId</code>와 <code>nullifier</code>가
+                정확한 값입니다
+                <br />
+                <br />
+                <strong style={{ color: '#fbbf24' }}>
+                  💡 재투표 시나리오:
+                </strong>
                 <br />• 마감 시간 전까지 재투표 가능
                 <br />• 같은 계정으로 다른 후보 선택 시{' '}
                 <code>isUpdate: True</code>로 표시
@@ -455,8 +538,8 @@ function ZKPVerificationGuide() {
                 }}
               >
                 → <strong>Overview 탭</strong>에서 Status가{' '}
-                <strong style={{ color: '#22c55e' }}>Success</strong> (녹색 체크)인지
-                확인
+                <strong style={{ color: '#22c55e' }}>Success</strong> (녹색
+                체크)인지 확인
                 <br />→ 이는 트랜잭션이 블록체인에 성공적으로 기록되었음을
                 의미합니다
               </span>
@@ -538,9 +621,7 @@ function ZKPVerificationGuide() {
             <li>
               Nullifier로 중복 투표 방지 가능하지만, 투표 내용은 알 수 없습니다
             </li>
-            <li>
-              Vote Commitment는 암호화된 값이며 원본 복원 불가능합니다
-            </li>
+            <li>Vote Commitment는 암호화된 값이며 원본 복원 불가능합니다</li>
           </ul>
         </div>
       </div>
@@ -561,4 +642,3 @@ function ZKPVerificationGuide() {
     </div>
   )
 }
-

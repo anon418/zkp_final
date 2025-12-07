@@ -11,12 +11,14 @@ interface CandidateSelectorProps {
   candidates: Candidate[]
   selectedOption: string | null
   onSelect: (id: string) => void
+  disabled?: boolean
 }
 
 export default function CandidateSelector({
   candidates,
   selectedOption,
   onSelect,
+  disabled = false,
 }: CandidateSelectorProps) {
   const optionStyle = (id: string): React.CSSProperties => ({
     padding: '18px',
@@ -26,7 +28,8 @@ export default function CandidateSelector({
         ? '1px solid #00f2fe'
         : '1px solid rgba(255,255,255,0.1)',
     background: selectedOption === id ? 'rgba(0,242,254,0.15)' : 'transparent',
-    cursor: 'pointer',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
   })
 
   return (
@@ -42,7 +45,11 @@ export default function CandidateSelector({
         <div
           key={c.id}
           style={optionStyle(c.id)}
-          onClick={() => onSelect(c.id)}
+          onClick={() => {
+            if (!disabled) {
+              onSelect(c.id)
+            }
+          }}
         >
           {c.label}
         </div>

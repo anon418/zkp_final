@@ -31,13 +31,17 @@ const VoteSchema = new Schema<IVote>(
   { timestamps: true }
 )
 
-// 인덱스
-VoteSchema.index({ pollId: 1 })
-VoteSchema.index({ nullifierHash: 1 })
-VoteSchema.index(
-  { pollId: 1, nullifierHash: 1 },
-  { unique: true, sparse: true }
-)
+// 인덱스 (성능 최적화)
+VoteSchema.index({ pollId: 1 }) // 투표별 조회
+VoteSchema.index({ nullifierHash: 1 }) // 중복 체크
+// 주의: unique 인덱스 제거 - 재투표 시 여러 레코드 생성 허용
+// 재투표 정책은 vote-aggregation.ts에서 마지막 투표만 선택하도록 처리
+VoteSchema.index({ pollId: 1, nullifierHash: 1 }) // 복합 인덱스 (unique 아님)
+
+// 결과 집계 최적화를 위한 인덱스
+VoteSchema.index({ pollId: 1, candidate: 1 }) // 투표별 후보별 집계
+VoteSchema.index({ pollId: 1, createdAt: -1 }) // 최신 투표 조회 (재투표 정책)
+VoteSchema.index({ pollId: 1, status: 1 }) // 상태별 필터링
 
 const Vote: Model<IVote> =
   models.Vote || mongoose.model<IVote>('Vote', VoteSchema)

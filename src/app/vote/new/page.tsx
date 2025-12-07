@@ -82,6 +82,13 @@ export default function NewPollPage() {
       return
     }
 
+    // 최대 후보 개수 제한 (8개)
+    if (candidates.length > 8) {
+      debug('❌ [3] 검증 실패: 후보 개수 초과')
+      notifyError('후보는 최대 8개까지 입력할 수 있습니다.')
+      return
+    }
+
     // 마감 시간 검증
     const now = new Date()
     const minDate = new Date(now.getTime() + 10 * 60 * 1000) // 최소 10분 후
@@ -370,7 +377,9 @@ export default function NewPollPage() {
             disabled={(() => {
               // 기본 검증
               if (isLoading || !title.trim()) return true
-              if (optionsText.split('\n').filter((v) => v.trim().length > 0).length < 2) return true
+              const candidateCount = optionsText.split('\n').filter((v) => v.trim().length > 0).length
+              if (candidateCount < 2) return true
+              if (candidateCount > 8) return true // 최대 8개 제한
               
               // 시간 검증
               let totalMinutes = 0
@@ -433,7 +442,9 @@ export default function NewPollPage() {
             {(() => {
               if (isLoading) return '투표 생성 중...'
               if (!title.trim()) return '제목을 입력하세요'
-              if (optionsText.split('\n').filter((v) => v.trim().length > 0).length < 2) return '후보를 2개 이상 입력하세요'
+              const candidateCount = optionsText.split('\n').filter((v) => v.trim().length > 0).length
+              if (candidateCount < 2) return '후보를 2개 이상 입력하세요'
+              if (candidateCount > 8) return '후보는 최대 8개까지 입력할 수 있습니다'
               
               let totalMinutes = 0
               if (useCustomDate) {

@@ -84,7 +84,12 @@ export async function GET(
   try {
     await dbConnect()
 
-    // 특정 pollId와 address로 투표 내역 조회
+    // 특정 pollId와 nullifier로 투표 내역 조회 (익명성 보장)
+    // 주의: voterAddress는 저장하지 않으므로, nullifierHash로 조회해야 함
+    // 하지만 nullifierHash는 클라이언트에서 알 수 없으므로, 
+    // 일단 voterAddress로 조회하되, 재투표 여부는 nullifierHash 기준으로 확인
+    
+    // 먼저 voterAddress로 최신 투표 조회 (레거시 호환)
     const vote = await Vote.findOne({
       pollId,
       voterAddress: address.toLowerCase(),
@@ -93,12 +98,20 @@ export async function GET(
       .lean()
 
     if (vote) {
+      // 재투표 여부 확인: 같은 nullifierHash로 여러 투표가 있는지 확인
+      const voteCount = await Vote.countDocuments({
+        pollId,
+        nullifierHash: vote.nullifierHash,
+      })
+      const isReVote = voteCount > 1 // 같은 nullifier로 여러 투표가 있으면 재투표
+      
       info(
-        `[MyVote] ${address}가 pollId ${pollId}에 투표함: txHash=${vote.txHash?.substring(0, 10)}...`
+        `[MyVote] ${address}가 pollId ${pollId}에 투표함: txHash=${vote.txHash?.substring(0, 10)}..., isReVote=${isReVote}, voteCount=${voteCount}`
       )
       return NextResponse.json({
         success: true,
         hasVoted: true,
+        isReVote, // 재투표 여부 추가
         vote: {
           txHash: vote.txHash,
           nullifierHash: vote.nullifierHash,

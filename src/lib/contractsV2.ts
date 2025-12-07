@@ -73,6 +73,7 @@ export async function getVotingV2ContractWithSigner(
  * @param endTime 종료 시간 (Unix timestamp)
  * @param candidates 후보 목록
  * @param signer Wallet Signer
+ * @param options 트랜잭션 옵션 (nonce, gasLimit, maxFeePerGas, maxPriorityFeePerGas)
  * @returns 트랜잭션 해시
  */
 export async function createElectionOnChain(
@@ -81,20 +82,30 @@ export async function createElectionOnChain(
   startTime: number,
   endTime: number,
   candidates: string[],
-  signer: ethers.Signer
+  signer: ethers.Signer,
+  options?: {
+    nonce?: number
+    gasLimit?: bigint
+    maxFeePerGas?: bigint
+    maxPriorityFeePerGas?: bigint
+  }
 ): Promise<string> {
   const contract = await getVotingV2ContractWithSigner(signer)
 
+  // 트랜잭션 전송 (해시 즉시 반환)
   const tx = await contract.createElection(
     pollId,
     merkleRoot,
     startTime,
     endTime,
-    candidates
+    candidates,
+    options || {}
   )
 
-  const receipt = await tx.wait()
-  return receipt.hash
+  // 트랜잭션 해시를 즉시 반환 (receipt 대기는 호출하는 쪽에서 처리)
+  // 이렇게 하면 트랜잭션이 전송되었는지 확인할 수 있고,
+  // 재시도 시 pending 트랜잭션을 확인할 수 있음
+  return tx.hash
 }
 
 /**

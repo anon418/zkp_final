@@ -147,16 +147,6 @@ npm run dev
 
 ---
 
-## 🚀 **배포**
-
-```bash
-# Vercel에 배포
-vercel deploy --prod
-```
-
-**배포 가이드**: [docs/DEPLOYMENT_CHECKLIST.md](docs/DEPLOYMENT_CHECKLIST.md) 참고
-
----
 
 <div align="center">
 
